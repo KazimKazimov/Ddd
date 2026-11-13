@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EM Bond Optimizer Mock-up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: sticky scorecard strip on top, limits (inputs and sliders) then results; two columns on wide screens. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --sunk:#e9edf1; --ink:#101820; --ink2:#4a5663; --muted:#73808d; --line:#dbe1e7;
+  --accent:#0f5c6e; --accent-ink:#ffffff;
+  --buy:#2a78d6; --sell:#eb6834; --buy-ink:#1d5fb4; --sell-ink:#b8461a;
+  --warn:#9a5b00; --warn-bg:#fdf1d8; --bad:#b3261e; --bad-bg:#fde7e4; --good:#1b7f4b;
+  --display:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1317; --surface:#172027; --sunk:#202b34; --ink:#eef2f5; --ink2:#b6c0ca; --muted:#8996a3; --line:#2b3742;
+    --accent:#5cbdd1; --accent-ink:#06222a;
+    --buy:#3987e5; --sell:#d95926; --buy-ink:#7fb2f0; --sell-ink:#f0946a;
+    --warn:#e7b04f; --warn-bg:#3a2c0e; --bad:#f08a80; --bad-bg:#40191a; --good:#4cc28a;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1317; --surface:#172027; --sunk:#202b34; --ink:#eef2f5; --ink2:#b6c0ca; --muted:#8996a3; --line:#2b3742;
+  --accent:#5cbdd1; --accent-ink:#06222a;
+  --buy:#3987e5; --sell:#d95926; --buy-ink:#7fb2f0; --sell-ink:#f0946a;
+  --warn:#e7b04f; --warn-bg:#3a2c0e; --bad:#f08a80; --bad-bg:#40191a; --good:#4cc28a;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 15px/1.45 var(--body);font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+header.top{padding:18px 0 10px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+h1{font:600 24px/1.15 var(--display);margin:0;letter-spacing:.01em;text-wrap:balance}
+.badge{font-size:12px;font-weight:500;color:var(--warn);background:var(--warn-bg);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.sub{flex-basis:100%;color:var(--ink2);font-size:13.5px;margin:0}
+h2{font:600 15px/1.2 var(--display);letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);margin:0}
+h3{font:600 14px/1.3 var(--body);margin:0}
+
+/* scorecard strip */
+.strip{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 8px 8px;min-width:0}
+.kpi .l{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .v{font:600 19px/1.2 var(--display);white-space:nowrap}
+.kpi .v small{font:500 11.5px var(--body);color:var(--muted);margin-left:2px}
+.kpi .d{font-size:11.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{height:4px;border-radius:2px;background:var(--sunk);margin-top:5px;position:relative;overflow:hidden}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--accent)}
+.meter.full i{background:var(--warn)}
+.meter.bad i{background:var(--bad)}
+.meter b{position:absolute;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:2px;background:var(--accent)}
+.meter.full b{background:var(--warn)}
+.busy .kpi .v{opacity:.5}
+.busy .kpi .l::after{content:" · solving";color:var(--warn)}
+
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:14px 0 40px}
+.col{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
+@media(min-width:1000px){main{grid-template-columns:384px minmax(0,1fr);align-items:start}.limits{position:sticky;top:92px;max-height:calc(100vh - 104px);overflow:auto}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card>h2{margin-bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.between{justify-content:space-between}
+
+/* presets, segmented controls, inputs */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:13.5px;font-weight:500;min-height:34px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sunk)}
+.seg button{border:0;background:transparent;padding:6px 10px;font-size:13px;font-weight:500;color:var(--ink2);min-height:34px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.lbl{font-size:12.5px;color:var(--ink2)}
+.opt{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:10px}
+.sect{font:600 12px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+.sect.first{border-top:0;padding-top:0;margin-top:12px}
+.nums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:8px}
+.nf label{display:block;font-size:12.5px;color:var(--ink2);margin-bottom:3px}
+.nf input,select.sel{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 9px;min-height:36px;font-weight:600}
+select.sel{width:auto;font-weight:500;font-size:13.5px;padding-right:26px}
+
+/* sliders */
+.sliders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin-top:10px}
+.sl label{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.sl output{font-weight:600;color:var(--ink)}
+.sl input{width:100%;margin:4px 0 0;accent-color:var(--accent);height:26px}
+.sl.flash{animation:flash 1.1s ease-out}
+@keyframes flash{0%{background:var(--warn-bg);box-shadow:0 0 0 6px var(--warn-bg)}100%{background:transparent;box-shadow:0 0 0 6px transparent}}
+.hint{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.link{border:0;background:none;color:var(--accent);font-size:13px;font-weight:500;padding:4px 0;text-decoration:underline}
+
+/* help: hover or focus anything with a dotted hint, or tap an i button */
+.i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--muted);background:none;color:var(--muted);font:600 11px/1 var(--body);padding:0;margin-left:5px;vertical-align:1px;cursor:help}
+.i:hover,.i:focus-visible{color:var(--accent);border-color:var(--accent)}
+[data-tip]{cursor:help}
+button[data-tip],select[data-tip],input[data-tip],.trow[data-tip]{cursor:pointer}
+.sl input{cursor:pointer}.nf input{cursor:text}
+.tip{position:fixed;z-index:50;max-width:min(340px,calc(100vw - 16px));background:var(--ink);color:var(--surface);border-radius:8px;padding:8px 10px;font:400 12.5px/1.45 var(--body);box-shadow:0 6px 18px rgba(0,0,0,.25);pointer-events:none;white-space:pre-line}
+
+/* pills */
+.bind{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{border:1px solid transparent;border-radius:999px;font-size:12.5px;font-weight:500;padding:4px 10px;background:var(--warn-bg);color:var(--warn);min-height:30px}
+.pill.slack{background:var(--sunk);color:var(--ink2)}
+span.pill{display:inline-flex;align-items:center}
+.alert{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:9px 11px;font-size:13.5px;font-weight:500;margin-top:8px}
+
+/* price of each limit */
+.prow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.prow .pt b{display:block;font-weight:500;font-size:14px}
+.prow .pt small{display:block;color:var(--muted);font-size:12px}
+.pg{display:flex;align-items:center;gap:8px;min-width:0}
+.pbar{flex:1;height:8px;background:var(--sunk);border-radius:4px;overflow:hidden;min-width:16px}
+.pbar i{display:block;height:100%;background:var(--warn);border-radius:4px;min-width:2px}
+.pg b{font-weight:600;font-size:13.5px;white-space:nowrap}
+.pbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 8px;font-size:13px;font-weight:500;min-height:34px;min-width:66px;white-space:nowrap}
+.pbtn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.pbtn:disabled{opacity:.5;cursor:default}
+
+/* tables */
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line);font-size:13.5px}
+th{font-weight:500;color:var(--muted);font-size:12px}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:0}
+.sum td:nth-child(3){font-weight:600}
+.sum td:first-child{white-space:normal}
+.sum small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+@media(max-width:480px){.sum th,.sum td,.mt th,.mt td{padding:6px 5px}}
+td.bad{color:var(--bad);font-weight:600}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 -14px 12px;padding:0 10px;overflow-x:auto}
+.tabs button{border:0;background:none;padding:9px 9px;font-weight:500;font-size:14.5px;color:var(--ink2);border-bottom:2px solid transparent;margin-bottom:-1px;min-height:40px;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* bar rows */
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink2);margin:10px 0 4px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.legend .ring{background:transparent;border:2px solid var(--ink2);border-radius:50%;width:9px;height:9px}
+.legend .tick{width:2px;height:12px;background:var(--ink);border-radius:0;vertical-align:-2px}
+.legend .dot{background:var(--accent);border-radius:50%}
+.legend .dia{background:var(--muted);width:8px;height:8px;transform:rotate(45deg);border-radius:1px}
+.legend .lim{width:0;height:12px;border-left:2px dotted var(--ink2);border-radius:0;vertical-align:-2px}
+.legend .dash{width:16px;height:0;border-top:2px dashed var(--accent);border-radius:0;vertical-align:3px}
+.trow,.axis{display:grid;grid-template-columns:minmax(132px,42%) minmax(0,1fr) 64px;gap:8px}
+.trow{align-items:center;width:100%;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;padding:7px 2px;min-height:44px}
+button.trow:hover{background:var(--sunk)}
+.trow .nm{min-width:0}
+.trow .nm b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}
+.trow .nm small{display:block;color:var(--muted);font-size:12px}
+.trow .nm small span{white-space:nowrap}
+.trow .nm small span+span{color:var(--ink2);margin-left:3px}
+.trow .val{text-align:right;font-weight:600;font-size:13.5px;white-space:nowrap}
+.bar{position:relative;height:16px}
+.bar::before{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:var(--line)}
+.bar i{position:absolute;top:2px;bottom:2px;min-width:2px}
+.bar i.pos{left:calc(50% + 1px);background:var(--buy);border-radius:0 4px 4px 0}
+.bar i.neg{right:calc(50% + 1px);background:var(--sell);border-radius:4px 0 0 4px}
+.bar u{position:absolute;top:-2px;bottom:-2px;width:2px;margin-left:-1px;background:var(--ink)}
+.bar s{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:2px solid var(--ink2);background:var(--surface)}
+.axis{font-size:11.5px;color:var(--muted);padding:0 2px}
+.axis div{display:flex;justify-content:space-between;white-space:nowrap}
+.axis em{font-style:normal}
+@media(max-width:640px){.axis em{display:none}}
+.expo{margin-top:16px}
+.expo:first-of-type{margin-top:6px}
+.srow{display:grid;grid-template-columns:20px 30px minmax(0,1fr) 76px;gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:4px 2px;min-height:48px}
+.srow.off .snm,.srow.off .val,.srow.off .rk{opacity:.45}
+.srow.off .snm b{text-decoration:line-through}
+.srow .rk{font-size:12px;color:var(--muted);text-align:right}
+.srow input{width:22px;height:22px;margin:4px;accent-color:var(--accent);cursor:pointer}
+.snm{border:0;background:none;text-align:left;padding:4px 0;min-width:0;width:100%}
+.snm:hover b{text-decoration:underline}
+.snm b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}
+.snm small{display:flex;flex-wrap:wrap;gap:0 8px;color:var(--muted);font-size:12px}
+.snm small span{white-space:nowrap}
+.srow .val{text-align:right;font-weight:600;font-size:13.5px}
+.srow .val small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.shead{font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--line);min-height:0;padding-bottom:4px}
+.chip.go{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip:disabled{opacity:.45;cursor:default}
+.ck{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;min-height:34px;cursor:pointer}
+.ck input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.sl input:disabled{opacity:.4;cursor:default}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) 78px 78px;gap:8px;align-items:center;margin-top:6px;font-size:13px}
+.mrow.hd{color:var(--muted);font-size:11.5px;margin-top:8px}
+.mrow input{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:5px 8px;min-height:34px;font-weight:600}
+.lim{margin:4px 0 8px}
+.ltrack{position:relative;height:26px;background:var(--sunk);border-radius:6px;margin:0 6px}
+.ltrack i{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.22}
+.ltrack em{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--ink)}
+.ltrack s{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid var(--ink2);background:var(--surface)}
+.ltrack b{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--accent);border:2px solid var(--surface)}
+.ltrack.out b{background:var(--bad)}
+.lcap{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink2);margin:6px 2px 0}
+.lcap b{color:var(--ink)}.lcap span:nth-child(2){text-align:center}.lcap span:last-child{text-align:right}
+.mt tr.lbind td{font-weight:600}
+.mt tr.tot td{border-top:2px solid var(--line);font-weight:600}
+.totals{font-size:13px;color:var(--ink2);margin:2px 0 8px;max-width:76ch}
+.q{display:inline-block;font-size:11px;font-weight:600;padding:0 5px;border-radius:4px;background:var(--sunk);color:var(--ink2);margin-left:4px}
+.q.lk{background:var(--warn-bg);color:var(--warn)}
+
+/* frontier */
+.frc{position:relative;margin-top:6px}
+.frc svg{display:block;cursor:pointer;touch-action:pan-y}
+.frc.stale svg{opacity:.4}
+.fg{stroke:var(--line);stroke-width:1}
+.fx{stroke:var(--muted);stroke-width:1}
+.fa{fill:var(--muted);font-size:11.5px;font-family:var(--body)}
+.fl{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.fl.flat{stroke-dasharray:5 6}
+.far{fill:var(--accent);opacity:.09}
+.flim{stroke:var(--ink2);stroke-width:2;stroke-dasharray:1 5;stroke-linecap:round}
+.flab{fill:var(--ink);font-size:12px;font-weight:500;font-family:var(--body);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.fbm{fill:var(--muted);stroke:var(--surface);stroke-width:2}
+.fcur{fill:var(--surface);stroke:var(--ink2);stroke-width:2}
+.fpro{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.fdot{fill:var(--surface);stroke:var(--accent);stroke-width:2}
+.ftip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);border-radius:6px;padding:5px 8px;font-size:12.5px;line-height:1.35;white-space:nowrap;z-index:2}
+details.tblv{margin-top:10px}
+details.tblv summary{font-size:13px;color:var(--accent);cursor:pointer;font-weight:500}
+
+/* data tables */
+.search{width:100%;max-width:260px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:7px 10px;min-height:36px}
+.pos th button{border:0;background:none;color:inherit;font:inherit;padding:0}
+.pos th[aria-sort] button{color:var(--ink);font-weight:600}
+.pos td:first-child,.pos th:first-child{position:sticky;left:0;background:var(--surface);max-width:176px;overflow:hidden;text-overflow:ellipsis}
+.pos tbody tr{cursor:pointer}
+.pos tbody tr:hover td{background:var(--sunk)}
+.pos th,.pos td{font-size:13px;padding:6px 7px}
+.up{color:var(--buy-ink)} .dn{color:var(--sell-ink)}
+td.up,td.dn{font-weight:600}
+.mt td:first-child{font-weight:500}
+@media(max-width:480px){.mt th,.mt td{font-size:13px;padding:6px 4px}}
+
+/* drill-down sheet */
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(940px,calc(100% - 24px));max-height:88vh}
+dialog::backdrop{background:rgba(8,14,20,.55)}
+.sh{padding:16px}
+.sh .hd{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}
+.sh h3{font:600 19px/1.2 var(--display)}
+.x{border:1px solid var(--line);background:var(--surface);border-radius:8px;min-width:36px;min-height:36px;font-size:16px}
+.crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;align-items:center;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.crumbs button{border:0;background:none;color:var(--accent);padding:2px 0;font-size:12.5px;font-weight:500;text-decoration:underline}
+.octl{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:8px 0 2px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 6px}
+.stats div{background:var(--sunk);border-radius:8px;padding:6px 8px;min-width:0}
+.stats div>span{display:block;font-size:11.5px;color:var(--muted)}
+.stats b{font-weight:600;font-size:14.5px}
+@media(min-width:700px){.stats.c5{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.sh h4{font:600 13px/1.2 var(--display);letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);margin:0}
+.sh .h4row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin:14px 0 6px}
+.scn{display:grid;grid-template-columns:132px 40px minmax(0,1fr) 58px;gap:8px;align-items:center;font-size:13.5px;padding:4px 0}
+.scn .p{color:var(--muted);text-align:right}
+.scn .r{text-align:right;font-weight:600}
+.scn-sep{font-size:12px;color:var(--muted);border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+.scn .p em{font-style:normal;font-size:11px;font-weight:600;color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:0 4px}
+.foot{color:var(--muted);font-size:12.5px;margin:10px 0 0;max-width:74ch}
+.note{font-size:13px;color:var(--ink2);max-width:74ch;margin:12px 0 0}
+@media(max-width:420px){.kpi .v{font-size:17px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.scn{grid-template-columns:116px 36px minmax(0,1fr) 52px;gap:6px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>EM Bond Optimizer</h1>
+    <span class="badge" id="badge">Mock-up on synthetic data</span>
+    <p class="sub" id="sub"></p>
+    <p class="sub"><label class="link" for="datafile" style="cursor:pointer" data-tip="Load a data file in the format of docs/DATA_SCHEMA.md. The page reloads and runs on that data instead of the mock universe.">Load a data file</label><input id="datafile" type="file" accept=".json,application/json" hidden>
+      <button class="link" id="datamock" hidden style="margin-left:12px" data-tip="Drop the loaded file and go back to the mock universe.">Back to mock data</button></p>
+    <div id="dataerr"></div>
+  </header>
+</div>
+
+<div class="strip" id="strip"><div class="wrap"><div class="kpis" id="kpis"></div></div></div>
+
+<div class="wrap">
+<main>
+  <section class="card limits" aria-labelledby="h-lim">
+    <div class="row between"><h2 id="h-lim">Limits vs index</h2>
+      <div class="chips" id="presets" role="group" aria-label="Presets"></div></div>
+    <p class="hint">Hover over any control, number or chart to see what it means. On a phone, tap its label or an <span aria-hidden="true">ⓘ</span>.</p>
+
+    <div class="sect first">Portfolio</div>
+    <div class="nums">
+      <div class="nf" data-tip="Portfolio size in billions of dollars. It turns % of NAV into trade amounts and drives the dollar minimum trade size."><label for="n-nav">Size, $ bn</label><input id="n-nav" type="number" min="0.05" step="0.5" inputmode="decimal"></div>
+      <div class="nf" data-tip="The rate cash earns, in the expected case and in the bull and bear cases alike. Holding cash therefore costs the index's return minus SOFR."><label for="n-sofr">Cash rate (SOFR), %</label><input id="n-sofr" type="number" min="0" max="15" step="0.05" inputmode="decimal"></div>
+    </div>
+
+    <div class="sect">Risk, positions and scenarios</div>
+    <div class="opt"><span class="lbl">Active position limits in</span>
+      <div class="seg" id="basis" role="group" aria-label="Active position limit basis">
+        <button data-b="mv" aria-pressed="true" data-tip="Country, region, quality and sector limits cap the active market value weight against the index.">Market value %</button>
+        <button data-b="ct" aria-pressed="false" data-tip="The same limits cap active CTDTS instead, as a share of the index's total DTS. A 3% limit lets a high-DTS country carry less market value than a low-DTS one.">CTDTS</button>
+      </div></div>
+    <p class="hint" id="basis-hint"></p>
+    <div class="sliders" id="sliders"></div>
+    <div class="opt"><label class="ck" data-tip="Hold tracking error at today's level: the limit becomes the current portfolio's tracking error, which the optimizer normally uses in full. The slider is switched off."><input type="checkbox" id="k-te">Keep tracking error unchanged</label>
+      <label class="ck" data-tip="Hold beta at today's level: the proposal's beta stays within 0.005 of the current portfolio's. The two beta sliders are switched off."><input type="checkbox" id="k-beta">Keep beta unchanged</label></div>
+    <div class="opt"><span class="lbl" id="cm-lab"></span>
+      <div class="seg" id="cmode" role="group" aria-label="Where the standard spread move applies">
+        <button data-m="missing" aria-pressed="true" data-tip="Use the analyst's scenarios: bull is the average of a bond's best 25% of outcomes, bear its worst 25%. Only a bond with no upside or no downside scenario gets the standard spread move instead.">Where a scenario is missing</button>
+        <button data-m="all" aria-pressed="false" data-tip="Ignore the analyst's bull and bear scenarios for the limits and give every bond the standard spread tightening and widening. Expected returns still come from the scenarios.">Every bond</button>
+      </div></div>
+    <div class="opt"><span class="lbl">Size of the move as</span>
+      <div class="seg" id="cshock" role="group" aria-label="How the move is sized">
+        <button data-s="std" data-tip="A fixed number of standard deviations of the relative spread change: the same size up and down.">Standard deviations</button>
+        <button data-s="pct" data-tip="A percentile of the distribution of relative spread changes. Bear is the widening at the chosen percentile, bull the tightening at the opposite one. Spreads widen further than they tighten, so the two differ in size.">Percentile</button>
+      </div></div>
+    <div class="opt"><span class="lbl">Distribution taken from</span>
+      <div class="seg" id="csrc" role="group" aria-label="Whose distribution sizes the move">
+        <button data-r="own" data-tip="Each bond's own bucket: its country, type and rating.">The bond itself</button>
+        <button data-r="country" data-tip="The spread distribution of the bond's whole country, so every bond of a country gets the same relative move.">Its country</button>
+        <button data-r="rating" data-tip="The spread distribution of all bonds with the same rating, so similarly rated bonds get the same relative move.">Same rating</button>
+      </div></div>
+    <div class="nums">
+      <div class="nf" data-tip="Size of the standard move in standard deviations of each bucket's own relative spread change over the horizon. Bull is a tightening of that size, bear a widening."><label for="n-k">Move size, std</label><input id="n-k" type="number" min="0.5" max="4" step="0.5" inputmode="decimal"></div>
+    </div>
+
+    <div class="sect">Macro factor limits</div>
+    <p class="hint" style="margin-top:6px">Alpha against the index, in bp, if the factor rises by 1 standard deviation. The optimizer keeps each one between its minimum and maximum.</p>
+    <div id="maclims"></div>
+
+    <div class="sect">Minimum trade size</div>
+    <div class="nums">
+      <div class="nf" data-tip="No bond trade, and no net trade in a country, may move less CTDTS than this. Both this and the dollar minimum must be met. Trades that cure a limit breach are exempt. 0 switches it off."><label for="n-minct">CTDTS</label><input id="n-minct" type="number" min="0" step="1" inputmode="decimal"></div>
+      <div class="nf" data-tip="No bond trade, and no net trade in a country, may be smaller than this many million dollars. Both this and the CTDTS minimum must be met. 0 switches it off."><label for="n-minusd">$ mio</label><input id="n-minusd" type="number" min="0" step="5" inputmode="decimal"></div>
+    </div>
+    <p class="hint">Applies to every bond trade and to each country's net trade, so the optimizer concentrates on its best ideas.</p>
+
+    <div class="sect">Small positions</div>
+    <div class="opt"><label class="ck" data-tip="After solving, any country whose holding would end below the threshold is sold whole and the problem is solved again. It clears out stub positions. Countries you hold are left alone, and these sales are exempt from the minimum trade size."><input type="checkbox" id="sm-on">Sell small country positions</label></div>
+    <div class="nums">
+      <div class="nf" data-tip="A country holding below this is sold whole."><label for="sm-val" id="sm-lab">Sell below</label><input id="sm-val" type="number" min="0" step="0.05" inputmode="decimal"></div>
+      <div class="nf"><label>Measured in</label><div class="seg" id="sm-unit" role="group" aria-label="Unit of the threshold"><button data-x="mv" data-tip="The country's holding as market value, % of NAV.">MV %</button><button data-x="ct" data-tip="The country's holding as CTDTS: market value % × DTS.">CTDTS</button></div></div>
+    </div>
+
+    <div class="sect">Overrides <button class="link" id="ovr-clear" hidden style="float:right;margin-top:-6px">Clear all</button></div>
+    <div class="bind" id="ovr-list"></div>
+  </section>
+
+  <div class="col">
+    <section class="card" aria-labelledby="h-sum">
+      <h2 id="h-sum">Against the index: current vs proposed</h2>
+      <div class="scroll"><table class="sum" id="sum"></table></div>
+      <p class="foot" id="sum-foot"></p>
+      <div id="alert"></div>
+      <h3 style="margin-top:14px">What is holding alpha back<button class="i" data-tip="Each row is a limit the proposal is pressing against. The number is the alpha gained if that limit alone is loosened by the step on the button, found by solving again. Tap the button to apply the step." aria-label="About this list">i</button></h3>
+      <p class="foot" style="margin-top:2px" id="price-cap"></p>
+      <div id="prices"></div>
+      <div class="bind" id="forced"></div>
+    </section>
+
+    <section class="card" aria-label="Results">
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" data-t="trades" aria-selected="true" data-tip="The proposed trades. Group them by region, quality, duration, type, country, bucket or bond.">Trades</button>
+        <button role="tab" data-t="sel" aria-selected="false" data-tip="Every proposed trade ranked by attractiveness: the alpha it adds divided by the tracking error it adds. Untick trades you do not want, see the new statistics, then redistribute.">Selection</button>
+        <button role="tab" data-t="fr" aria-selected="false" data-tip="The most alpha available at each tracking error limit, with the current portfolio, the proposal and the index marked.">Frontier</button>
+        <button role="tab" data-t="expo" aria-selected="false" data-tip="Active positions against the index by region, quality, duration, type and country, before and after the trades.">Exposures</button>
+        <button role="tab" data-t="mac" aria-selected="false" data-tip="Active exposure to macro factors, in bp of alpha for a 1 standard deviation move in each factor, and the five best trades to raise or lower each exposure.">Macro</button>
+        <button role="tab" data-t="pos" aria-selected="false" data-tip="Every position as a sortable table, at any level from region down to bond.">Positions</button>
+      </div>
+      <div class="row" id="toolbar">
+        <div class="seg" id="unit" role="group" aria-label="Measure">
+          <button data-u="mv" aria-pressed="true" data-tip="Market value: weights, active weights and trades as % of NAV.">Market value %</button>
+          <button data-u="dts" aria-pressed="false" data-tip="DTS: spread duration × spread in bp. Shown as the average DTS of what the portfolio holds in each position, against the index's.">DTS</button>
+          <button data-u="ratio" aria-pressed="false" data-tip="DTS ratio: the portfolio's CTDTS in a position divided by the index's. 1.00× matches the index; 1.30× carries 30% more spread risk there.">DTS ratio</button>
+          <button data-u="ct" aria-pressed="false" data-tip="CTDTS: contribution to DTS, market value weight × DTS. The CTDTS of all positions adds up to the portfolio's DTS.">CTDTS</button>
+        </div>
+        <label class="lbl" for="lvl" id="lvl-lab">Group by</label>
+        <select class="sel" id="lvl" data-tip="The level to show: broad buckets (region, quality rating, duration, type), countries, country × type buckets, or single bonds. Tap any row to drill down."></select>
+      </div>
+      <div id="panel"></div>
+    </section>
+
+    <p class="note">How it works: the optimizer chooses weights for each country × type × quality bucket to maximize expected alpha against the index, net of trading cost, with cash earning SOFR. Tracking error and beta come from active CTDTS and the covariance of relative spread changes. The bull-case, bear-case and single-name limits use the scenarios, or a standard-deviation spread move where one is missing. Bucket trades are mapped to bonds, and trades below the minimum size are pruned and the problem solved again. DTS is spread duration × spread in bp. <span id="mocknote">Every number here is generated for the mock-up.</span></p>
+  </div>
+</main>
+</div>
+
+<dialog id="sheet" aria-labelledby="sh-title"><div class="sh" id="sh"></div></dialog>
+
+<script id="userdata" type="application/json">/*DATA*/</script>
+<script id="engine">
+/*ENGINE*/
+</script>
+<script>
+(function(){
+/* data: a file built into the page, else one loaded in this browser session, else the mock universe */
+var DATA=null,DERR='',DKEY='emopt-data';
+(function(){var t=$0('userdata').textContent.trim();if(t.charAt(0)==='{'){try{DATA=JSON.parse(t);}catch(e){DERR='The data built into this page is not valid JSON.';}}
+  if(!DATA){try{var st=sessionStorage.getItem(DKEY);if(st)DATA=JSON.parse(st);}catch(e){}}})();
+function $0(id){return document.getElementById(id);}
+function bootU(){var keep=[CTRY,REG,MACM,MACN];
+  if(DATA){try{return universeFromData(DATA);}catch(e){DERR=e.message;DATA=null;CTRY=keep[0];REG=keep[1];MACM=keep[2];MACN=keep[3];try{sessionStorage.removeItem(DKEY);}catch(e2){}}}
+  return buildUniverse(7);}
+var U=bootU(),P=null,LOCK={},R=null,G=null,GD=false,BW=null,CTX=null,M0=null,FR={key:'',pts:[],done:false};
+var measure='mv',tlevel='country',plevel='country',tab='trades',sortKey='flow',sortDir=-1,filter='',PATH=null,cview='bond',showAll=false,DES={},DESC={},FROZ={},slevel='country',macF=0;
+var n=U.n,B=U.B,BD=U.bonds,muB=U.benchRet,$=function(id){return document.getElementById(id);};
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function f(v,d){return v.toFixed(d==null?2:d);}
+function sg(v,d){var t=Math.abs(v).toFixed(d==null?2:d);if(+t===0)return t;return (v>0?'+':'−')+t;}
+function num(v){return Math.round(v).toLocaleString('en-US');}
+function sgn(v){var r=Math.round(v);return r===0?'0':(r>0?'+':'−')+Math.abs(r).toLocaleString('en-US');}
+function na(v,fn){return v==null||!isFinite(v)?'–':fn(v);}
+function bp0(v){return sg(v,0)+' bp';}
+function trim(v){return String(Math.round(Math.abs(v)*100)/100);}
+function sgt(v){return (v>0?'+':'−')+trim(v);}
+function tolOf(t){return Math.max(0.6,t*0.006);}
+function ud(v){return v>1e-9?'up':v<-1e-9?'dn':'';}
+function usd(pct){return pct/100*P.nav;}                                   // % of NAV to $ mio
+function mio(v){var a=Math.abs(v);return (a>=100?num(a):a>=10?f(a,0):f(a,1));}
+function money(pct){var v=usd(pct);return (v>0?'+':v<0?'−':'')+'$'+mio(v)+' mio';}
+var SECN=['Sovereign','Quasi-sovereign','Corporate'],SECS=['Sov','Quasi','Corp'];
+$('sub').textContent=CTRY.length+' countries, '+n+' buckets, '+BD.length+' bonds. Everything is measured against the index.';
+function bucketsOf(c){var a=[];for(var i=0;i<n;i++)if(B[i].c===c)a.push(i);return a;}
+function lockWord(v){return v===1?'held':v===2?'excluded':'';}
+function caseName(x){return x.c<0?'none':CTRY[x.c][0]+(x.up?' rally':' sell-off');}
+
+/* ---------- help: hover with a mouse, focus with the keyboard, tap on a touch screen ---------- */
+var tipEl=document.createElement('div'),tipFor=null,tipPend=null,tipT=null,tipH=null,tipTap=false,tipQuiet=0,tipX=0,tipY=0,tipSeen={},lastPT='mouse',px=-9,py=-9;
+tipEl.className='tip';tipEl.hidden=true;tipEl.setAttribute('role','tooltip');document.body.appendChild(tipEl);
+function showTip(el,pt){var host=el.closest('dialog')||document.body;if(tipEl.parentNode!==host)host.appendChild(tipEl);
+  clearTimeout(tipT);clearTimeout(tipH);tipPend=null;tipEl.textContent=el.getAttribute('data-tip');tipEl.hidden=false;tipFor=el;
+  var r=el.getBoundingClientRect(),w=tipEl.offsetWidth,h=tipEl.offsetHeight,vw=window.innerWidth,vh=window.innerHeight,x,y;tipX=r.left;tipY=r.top;
+  if(pt){x=pt.x+14;y=pt.y+18;if(y+h>vh-8)y=pt.y-h-12;}        // beside the pointer
+  else{x=r.left+r.width/2-w/2;y=r.top-h-8;if(y<8)y=r.bottom+8;} // above the control, so it does not cover what the control changes
+  tipEl.style.left=Math.min(vw-w-8,Math.max(8,x))+'px';tipEl.style.top=Math.min(vh-h-8,Math.max(8,y))+'px';}
+function hideTip(){clearTimeout(tipT);clearTimeout(tipH);tipEl.hidden=true;tipFor=null;tipPend=null;tipTap=false;}
+/* after a re-draw: a hover tip whose control is gone goes too; a tapped tip stays for its few seconds */
+function tidyTip(){if(tipFor&&!tipTap&&!document.contains(tipFor))hideTip();}
+function tapTip(el,ms){showTip(el);tipTap=true;tipH=setTimeout(hideTip,ms);}
+function tipOf(e){return e.target&&e.target.closest?e.target.closest('[data-tip]'):null;}
+document.addEventListener('pointerdown',function(e){lastPT=e.pointerType||'mouse';},true);
+document.addEventListener('pointermove',function(e){
+  if(e.pointerType!=='mouse')return;lastPT='mouse';
+  if(e.clientX===px&&e.clientY===py)return;px=e.clientX;py=e.clientY;   // ignore the moves a browser makes up after a re-draw
+  var t=tipOf(e);
+  if(!t){if(tipFor||tipPend)hideTip();return;}
+  if(t===tipFor||t===tipPend)return;
+  var was=!!tipFor;hideTip();tipPend=t;
+  tipT=setTimeout(function(){tipPend=null;if(document.contains(t))showTip(t,{x:px,y:py});},was?90:320);});
+document.documentElement.addEventListener('mouseleave',hideTip);
+document.addEventListener('focusin',function(e){var t=tipOf(e);if(t&&t!==tipFor&&e.target.matches&&e.target.matches(':focus-visible'))showTip(t);});
+document.addEventListener('focusout',function(e){if(tipFor&&!tipTap&&(tipFor===e.target||tipFor.contains(e.target)))hideTip();});
+document.addEventListener('click',function(e){var el=tipOf(e),touch=lastPT!=='mouse';
+  if(el&&el.classList.contains('i')){e.preventDefault();e.stopPropagation();
+    if(touch&&tipFor===el){hideTip();return;}
+    if(touch)tapTip(el,9000);else showTip(el);return;}
+  if(!touch)return;                                       // with a mouse, hovering is enough
+  var tag=e.target.tagName;if(tag==='INPUT'||tag==='SELECT')return;   // fields explain themselves when focused
+  if(!el||el.classList.contains('trow')){hideTip();return;}
+  if(el.closest('button,select')){var key=el.getAttribute('data-tip');     // a button also acts, so it explains itself once
+    if(tipSeen[key]||el.classList.contains('pill')||el.classList.contains('pbtn')){hideTip();return;}tipSeen[key]=1;}
+  tapTip(el,4500);},true);
+/* scrolling the explained control away hides its tip; a page that only shifts behind it does not */
+window.addEventListener('scroll',function(){if(!tipFor)return;
+  if(document.contains(tipFor)){var r=tipFor.getBoundingClientRect();if(Math.abs(r.top-tipY)>2||Math.abs(r.left-tipX)>2)hideTip();}
+  else if(Date.now()>tipQuiet)hideTip();},true);
+function info(text,label){return '<button class="i" data-tip="'+esc(text)+'" aria-label="'+esc(label||'About this')+'">i</button>';}
+
+/* ---------- controls ---------- */
+function pm(v){return '±'+v+'%';}
+function pc(v){return v+'%';}
+var SL=[
+ {k:'te',label:'Tracking error',min:20,max:300,step:5,fmt:function(v){return '≤ '+v+' bp';},tip:'Cap on expected tracking error against the index over the horizon. It comes from active CTDTS and the covariance of relative spread changes.'},
+ {k:'turnover',label:'Turnover',min:2,max:50,step:1,fmt:function(v){return '≤ '+v+'%';},tip:'Cap on one-way turnover: half of buys plus sells, as % of NAV.'},
+ {k:'betaMin',label:'Beta min',min:0.7,max:1,step:0.01,fmt:function(v){return f(v);},tip:'Lowest allowed beta to the index. 1.00 means the same sensitivity to spread moves as the index.'},
+ {k:'betaMax',label:'Beta max',min:1,max:1.4,step:0.01,fmt:function(v){return f(v);},tip:'Highest allowed beta to the index. 1.10 means 10% more sensitivity to spread moves than the index.'},
+ {k:'country',label:'Country active',min:0.5,max:8,step:0.5,fmt:pm,tip:'Largest over- or underweight against the index in any one country, in the basis chosen above.'},
+ {k:'region',label:'Region active',min:1,max:15,step:0.5,fmt:pm,tip:'Largest over- or underweight against the index in any one region.'},
+ {k:'quality',label:'Quality active',min:1,max:20,step:0.5,fmt:pm,tip:'Largest over- or underweight against the index in any one rating bucket (IG, BB, B, CCC).'},
+ {k:'sector',label:'Type active',min:1,max:20,step:0.5,fmt:pm,tip:'Largest over- or underweight against the index in sovereigns, quasi-sovereigns or corporates.'},
+ {k:'cashMin',label:'Cash min',min:0,max:3,step:0.25,fmt:pc,tip:'Least cash to hold, as % of NAV. Cash earns SOFR.'},
+ {k:'cashMax',label:'Cash max',min:3,max:10,step:0.5,fmt:pc,tip:'Most cash to hold, as % of NAV. Cash earns SOFR.'},
+ {k:'bull',label:'Bull alpha',min:-300,max:0,step:5,fmt:function(v){return '≥ '+sg(v,0)+' bp';},tip:'Floor on alpha if every name lands in its bull case at once. It stops the portfolio being so defensive that a rally costs too much against the index.'},
+ {k:'bear',label:'Bear alpha',min:-300,max:0,step:5,fmt:function(v){return '≥ '+sg(v,0)+' bp';},tip:'Floor on alpha if every name lands in its bear case at once. It stops the portfolio carrying so much risk that a sell-off costs too much against the index.'},
+ {k:'name',label:'Single name',min:10,max:300,step:5,fmt:function(v){return '≤ '+v+' bp';},tip:'Most alpha that may be lost if one country alone lands in its bull or bear case. An underweight loses in the rally, an overweight in the sell-off.'},
+ {k:'cost',label:'Trading cost',min:0,max:100,step:5,fmt:function(v){return v+' bp';},tip:'Bid-ask cost of trading a BB sovereign. It is scaled up for lower quality and for quasi-sovereign and corporate bonds.'}
+],SLM={};SL.forEach(function(s){SLM[s.k]=s;});
+/* one "notch" of loosening per limit: d = change to the slider, u = units the price is quoted in */
+var STEP={te:{d:10,u:1,s:' bp'},turnover:{d:2,u:1,s:'%'},betaMax:{d:0.02,u:0.01,s:''},betaMin:{d:-0.02,u:0.01,s:''},
+ country:{d:0.5,u:1,s:'%'},region:{d:1,u:1,s:'%'},quality:{d:1,u:1,s:'%'},sector:{d:1,u:1,s:'%'},
+ cashMin:{d:-0.5,u:1,s:'%'},cashMax:{d:0.5,u:1,s:'%'},bull:{d:-10,u:1,s:' bp'},bear:{d:-10,u:1,s:' bp'},name:{d:10,u:1,s:' bp'}};
+var PRE={
+ Cautious:{te:50,betaMin:0.97,betaMax:1.05,country:2,region:4,quality:5,sector:6,cashMin:0.5,cashMax:5,turnover:8,bull:-30,bear:-30,name:30,cost:30},
+ Balanced:{te:100,betaMin:0.95,betaMax:1.10,country:3,region:6,quality:8,sector:10,cashMin:0.5,cashMax:5,turnover:20,bull:-50,bear:-50,name:50,cost:30},
+ Bold:{te:200,betaMin:0.9,betaMax:1.2,country:5,region:10,quality:14,sector:15,cashMin:0.5,cashMax:5,turnover:35,bull:-100,bear:-100,name:100,cost:30}
+},PTIP={Cautious:'A tight set of limits: low tracking error, small active positions, little turnover.',Balanced:'The starting set of limits.',Bold:'A loose set of limits: more tracking error, larger active positions, more turnover.'};
+var KEEP={te:false,beta:false},SAVE={};
+var DSET=(DATA&&DATA.settings)||{};
+var EXTRA={caseShock:'std',casePct:95,caseSrc:'own',small:{on:false,val:0.25,unit:'mv'},macMin:MACN.map(function(){return -100;}),macMax:MACN.map(function(){return 100;}),basis:'mv',sofr:DSET.sofr==null?DEFAULTS.sofr:DSET.sofr,nav:DSET.navMio==null?DEFAULTS.nav:DSET.navMio,minCT:DEFAULTS.minCT,minUSD:DEFAULTS.minUSD,caseMode:DEFAULTS.caseMode,caseK:DEFAULTS.caseK};
+P=Object.assign({},PRE.Balanced,EXTRA);
+$('sliders').innerHTML=SL.map(function(s){return '<div class="sl" id="sl-'+s.k+'" data-tip="'+esc(s.tip)+'"><label for="in-'+s.k+'"><span>'+s.label+'</span><output id="out-'+s.k+'"></output></label><input type="range" id="in-'+s.k+'" min="'+s.min+'" max="'+s.max+'" step="'+s.step+'"></div>';}).join('');
+$('presets').innerHTML=Object.keys(PRE).map(function(k){return '<button class="chip" data-p="'+k+'" aria-pressed="false" data-tip="'+esc(PTIP[k])+'">'+k+'</button>';}).join('');
+function press(id,attr,val){Array.prototype.forEach.call($(id).children,function(x){x.setAttribute('aria-pressed',x.dataset[attr]===val);});}
+var NUMS=[['n-nav',function(){return P.nav/1000;},function(v){if(v>0)P.nav=v*1000;}],['n-sofr',function(){return P.sofr;},function(v){if(v>=0&&v<=15)P.sofr=v;}],
+  ['n-k',function(){return P.caseShock==='pct'?P.casePct:P.caseK;},function(v){if(P.caseShock==='pct'){if(v>50&&v<100)P.casePct=v;}else if(v>=0.5&&v<=4)P.caseK=v;}],
+  ['sm-val',function(){return P.small.val;},function(v){if(v>=0)P.small.val=v;}],['n-minct',function(){return P.minCT;},function(v){if(v>=0)P.minCT=v;}],['n-minusd',function(){return P.minUSD;},function(v){if(v>=0)P.minUSD=v;}]];
+$('maclims').innerHTML='<div class="mrow hd"><span>Factor, +1 std</span><span>Min, bp</span><span>Max, bp</span></div>'+MACN.map(function(nm,j){return '<div class="mrow" data-tip="Lowest and highest alpha allowed if '+esc(nm)+' rises by 1 standard deviation. A negative number is a loss."><span>'+nm+'</span><input id="mmin-'+j+'" type="number" step="5" inputmode="decimal" aria-label="'+esc(nm)+' minimum"><input id="mmax-'+j+'" type="number" step="5" inputmode="decimal" aria-label="'+esc(nm)+' maximum"></div>';}).join('');
+/* keep tracking error or beta unchanged: the limit is pinned to the current portfolio's value */
+function applyKeep(){var c=cases(U,P);c.sofr=P.sofr;var m=metrics(U,U.w0,c);
+  if(KEEP.te)P.te=Math.round(m.te*10)/10;
+  if(KEEP.beta){P.betaMin=Math.round((m.beta-0.005)*1000)/1000;P.betaMax=Math.round((m.beta+0.005)*1000)/1000;}}
+function betaTxt(){return KEEP.beta?'keep '+f((P.betaMin+P.betaMax)/2):f(P.betaMin)+'\u2013'+f(P.betaMax);}
+function syncControls(){SL.forEach(function(s){$('in-'+s.k).value=P[s.k];$('out-'+s.k).textContent=s.k==='te'&&KEEP.te?'keep '+f(P.te,0)+' bp':(s.k==='betaMin'||s.k==='betaMax')&&KEEP.beta?'keep '+f((P.betaMin+P.betaMax)/2):s.fmt(P[s.k]);});
+  $('in-te').disabled=KEEP.te;$('in-betaMin').disabled=$('in-betaMax').disabled=KEEP.beta;$('k-te').checked=KEEP.te;$('k-beta').checked=KEEP.beta;
+  MACN.forEach(function(nm,j){var a=$('mmin-'+j),b=$('mmax-'+j);if(document.activeElement!==a)a.value=P.macMin[j];if(document.activeElement!==b)b.value=P.macMax[j];});
+  Array.prototype.forEach.call($('presets').children,function(b){var pr=PRE[b.dataset.p],same=SL.every(function(s){return Math.abs(pr[s.k]-P[s.k])<1e-9;});b.setAttribute('aria-pressed',same);});
+  press('basis','b',P.basis);press('cmode','m',P.caseMode);$('cm-lab').textContent='Use a '+shLbl()+' spread move for bull and bear';
+  press('cshock','s',P.caseShock);press('csrc','r',P.caseSrc);press('sm-unit','x',P.small.unit);$('sm-on').checked=P.small.on;
+  var nk=$('n-k'),pc=P.caseShock==='pct';nk.previousElementSibling.textContent=pc?'Percentile of the widening':'Move size, std';nk.min=pc?51:0.5;nk.max=pc?99.9:4;nk.step=pc?1:0.5;
+  $('sm-lab').textContent='Sell below, '+(P.small.unit==='mv'?'% of NAV':'CTDTS');
+  NUMS.forEach(function(x){if(document.activeElement!==$(x[0]))$(x[0]).value=x[1]();});
+  $('basis-hint').textContent=P.basis==='mv'?'Country, region, quality and type limits cap active market value against the index.':
+    'Limits cap active CTDTS as a share of index DTS ('+num(U.benchDts*100)+'). Country ±'+P.country+'% is ±'+f(P.country*U.benchDts,0)+' CTDTS.';}
+var timer=null;
+function later(ms){clearTimeout(timer);timer=setTimeout(run,ms);}
+SL.forEach(function(s){$('in-'+s.k).addEventListener('input',function(e){P[s.k]=+e.target.value;syncControls();later(120);});});
+NUMS.forEach(function(x){$(x[0]).addEventListener('input',function(e){var v=parseFloat(e.target.value);if(isFinite(v)){x[2](v);$('cm-lab').textContent='Use a '+shLbl()+' spread move for bull and bear';later(450);}});
+  $(x[0]).addEventListener('blur',function(){syncControls();});});
+$('presets').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;var keep={};Object.keys(EXTRA).forEach(function(k){keep[k]=P[k];});P=Object.assign({},PRE[b.dataset.p],keep);
+  SAVE={te:P.te,betaMin:P.betaMin,betaMax:P.betaMax};applyKeep();syncControls();run();});
+function setKeep(k,on){if(on){if(k==='te')SAVE.te=P.te;else{SAVE.betaMin=P.betaMin;SAVE.betaMax=P.betaMax;}KEEP[k]=true;applyKeep();}
+  else{KEEP[k]=false;if(k==='te'){if(SAVE.te!=null)P.te=SAVE.te;}else if(SAVE.betaMin!=null){P.betaMin=SAVE.betaMin;P.betaMax=SAVE.betaMax;}}
+  syncControls();run();}
+$('k-te').addEventListener('change',function(e){setKeep('te',e.target.checked);});
+$('k-beta').addEventListener('change',function(e){setKeep('beta',e.target.checked);});
+$('maclims').addEventListener('input',function(e){var m=/^m(min|max)-(\d)$/.exec(e.target.id||''),v=parseFloat(e.target.value);if(!m||!isFinite(v))return;(m[1]==='min'?P.macMin:P.macMax)[+m[2]]=v;later(450);});
+$('maclims').addEventListener('focusout',function(){setTimeout(syncControls,0);});
+$('basis').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;P.basis=b.dataset.b;if(measure==='mv'||measure==='ct'){measure=P.basis;press('unit','u',measure);}syncControls();run();});
+$('cmode').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;P.caseMode=b.dataset.m;syncControls();run();});
+$('cshock').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;P.caseShock=b.dataset.s;syncControls();run();});
+$('csrc').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;P.caseSrc=b.dataset.r;syncControls();run();});
+$('sm-on').addEventListener('change',function(e){P.small=Object.assign({},P.small,{on:e.target.checked});syncControls();run();});
+$('sm-unit').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.dataset.x===P.small.unit)return;P.small=Object.assign({},P.small,{unit:b.dataset.x,val:b.dataset.x==='mv'?0.25:5});syncControls();run();});
+/* words for the bull and bear move */
+function ordW(v){v=Math.round(v*10)/10;var s=v%10===1&&v!==11?'st':v%10===2&&v!==12?'nd':v%10===3&&v!==13?'rd':'th';return v+s;}
+function shLbl(){return P.caseShock==='pct'?ordW(100-P.casePct)+' and '+ordW(P.casePct)+' percentile':'±'+P.caseK+' std';}
+function shW(wide){return P.caseShock==='pct'?(wide?ordW(P.casePct)+' pct widening':ordW(100-P.casePct)+' pct tightening'):P.caseK+' std '+(wide?'widening':'tightening');}
+function srcW(){return P.caseSrc==='country'?'its country\'s distribution':P.caseSrc==='rating'?'the distribution of bonds with its rating':'its own distribution';}
+
+/* ---------- overrides ---------- */
+function renderOverrides(){var items=[],c;
+  for(c=0;c<CTRY.length;c++){var idx=bucketsOf(c),st=idx.map(function(i){return LOCK[i]|0;});
+    if(st[0]&&st.every(function(s){return s===st[0];}))items.push({label:CTRY[c][0]+': '+lockWord(st[0]),idx:idx});
+    else idx.forEach(function(i){if(LOCK[i])items.push({label:B[i].country+' '+SECS[B[i].sec]+': '+lockWord(LOCK[i]),idx:[i]});});}
+  Object.keys(FROZ).forEach(function(k){items.push({label:BD[k].name+': '+lockWord(FROZ[k]),fz:k});});
+  var more=items.length>8?items.length-7:0;if(more)items=items.slice(0,7);
+  $('ovr-clear').hidden=!items.length;
+  $('ovr-list').innerHTML=items.length?items.map(function(it){return '<button class="pill" '+(it.fz!=null?'data-fz="'+it.fz+'"':'data-idx="'+it.idx.join(',')+'"')+' data-tip="Tap to remove this override." aria-label="Remove override, '+esc(it.label)+'">'+esc(it.label)+' ✕</button>';}).join('')+(more?'<span class="pill slack">and '+more+' more</span>':''):
+    '<span class="pill slack" data-tip="An override takes a country or a bucket out of the optimizer\'s hands. Hold keeps today\'s weight. Exclude sells it all.">None. Open any region, rating, country, bucket or bond to hold or exclude it, or untick trades under Selection.</span>';}
+/* override of any set of bonds: whole buckets are locked as buckets, the rest bond by bond */
+function ovOf(k){return LOCK[BD[k].b]||FROZ[k]||0;}
+function ovState(ids){var s=ovOf(ids[0]);for(var i=1;i<ids.length;i++)if(ovOf(ids[i])!==s)return 'mixed';return s;}
+function setOv(ids,v){var cnt={},inSet={};ids.forEach(function(k){cnt[BD[k].b]=(cnt[BD[k].b]||0)+1;inSet[k]=1;});
+  Object.keys(cnt).forEach(function(b){b=+b;var all=U.bondsOf[b];
+    if(cnt[b]===all.length){all.forEach(function(k){delete FROZ[k];});if(v)LOCK[b]=v;else delete LOCK[b];}
+    else{if(LOCK[b]){var was=LOCK[b];delete LOCK[b];all.forEach(function(k){FROZ[k]=was;});}
+      all.forEach(function(k){if(inSet[k]){if(v)FROZ[k]=v;else delete FROZ[k];}});}});
+  renderOverrides();run();}
+function setLock(idx,v){idx.forEach(function(i){if(v)LOCK[i]=v;else delete LOCK[i];});renderOverrides();run();}
+$('ovr-list').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.dataset.fz!=null){delete FROZ[b.dataset.fz];renderOverrides();run();return;}setLock(b.dataset.idx.split(',').map(Number),0);});
+function clearOverrides(){LOCK={};FROZ={};renderOverrides();run();}
+$('ovr-clear').addEventListener('click',clearOverrides);
+
+/* ---------- solver plumbing (worker with main-thread fallback) ---------- */
+var worker=null,wready=false,session=null,reqId=0,reqKey='',inflight=false,queued=false,dog=null;
+function minOn(){return P.minCT>0||P.minUSD>0;}
+function rule(){return {minCT:P.minCT,minUSD:P.minUSD,nav:P.nav,frozen:FROZ};}
+function kept(k){return (k==='te'&&KEEP.te)||((k==='betaMin'||k==='betaMax')&&KEEP.beta);}
+function stepTo(k){var sl=SLM[k];if(kept(k))return P[k];return Math.round(Math.min(sl.max,Math.max(sl.min,P[k]+STEP[k].d))*1e4)/1e4;}
+function params(){var steps={};Object.keys(STEP).forEach(function(k){steps[k]=stepTo(k)-P[k];});
+  return Object.assign({},P,{locks:Object.assign({},LOCK),frozen:Object.assign({},FROZ),steps:steps});}
+/* the frontier is unchanged by the tracking error limit itself, unless a minimum trade size makes each answer depend on the last */
+function frKey(){var o={};Object.keys(P).forEach(function(k){if(k!=='te'||minOn())o[k]=P[k];});return JSON.stringify(o)+JSON.stringify(LOCK)+JSON.stringify(FROZ);}
+function handle(msg){
+  if(msg.r){inflight=false;clearTimeout(dog);if(queued){queued=false;run();return;}if(msg.id===reqId){R=msg.r;G=null;GD=false;$('strip').classList.remove('busy');render();}}
+  if(msg.gains&&msg.id===reqId){G=msg.gains;GD=!!msg.gDone;renderPrices();}
+  if(msg.frDone&&msg.id===reqId){FR={key:reqKey,pts:msg.fr,done:true};if(tab==='fr')renderPanel();}}
+/* the solver runs in a worker so the page stays responsive; if the worker cannot start or stalls, the page solves by itself */
+function dropWorker(){if(!worker)return;try{worker.terminate();}catch(e){}worker=null;clearTimeout(dog);if(inflight){inflight=false;run();}}
+try{var src=$('engine').textContent+'\nvar S=makeSession('+(DATA?'universeFromData('+JSON.stringify(DATA)+')':'buildUniverse(7)')+',function(m){postMessage(m);});onmessage=function(e){S.request(e.data.id,e.data.p,e.data.needFr);};postMessage({ready:1});';
+  worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+  worker.onmessage=function(e){if(e.data&&e.data.ready){wready=true;return;}handle(e.data);};
+  worker.onerror=dropWorker;
+  setTimeout(function(){if(!wready)dropWorker();},3000);
+}catch(err){worker=null;}
+function run(){$('strip').classList.add('busy');
+  if(inflight){queued=true;return;}
+  var key=frKey(),msg={id:++reqId,p:params(),needFr:!(FR.done&&FR.key===key)};
+  inflight=true;reqKey=key;
+  if(worker){worker.postMessage(msg);clearTimeout(dog);dog=setTimeout(dropWorker,30000);}
+  else{if(!session)session=makeSession(U,handle);setTimeout(function(){session.request(msg.id,msg.p,msg.needFr);},30);}}
+
+/* ---------- measures: every statistic in market value %, DTS, DTS ratio or CTDTS ---------- */
+var MEAS={
+ mv:{label:'Market value %',unit:'% of NAV',tip:'Market value: weights, active weights and trades as % of NAV.',lv:function(v){return f(v,2)+'%';},ac:function(v){return sg(v,2);},act:true},
+ dts:{label:'DTS',unit:'average DTS of the holdings',tip:'DTS: spread duration × spread in bp. For a group of bonds, the average DTS of what is held, against the index\'s.',lv:function(v){return num(v);},ac:function(v){return sgn(v);},act:false},
+ ratio:{label:'DTS ratio',unit:'portfolio CTDTS ÷ index CTDTS',tip:'DTS ratio: the portfolio\'s CTDTS in a position divided by the index\'s. 1.00× matches the index; 1.30× carries 30% more spread risk there.',lv:function(v){return f(v,2)+'×';},ac:function(v){return sg(v,2);},act:false},
+ ct:{label:'CTDTS',unit:'market value % × DTS',tip:'CTDTS: contribution to DTS, market value weight × DTS. The CTDTS of all positions adds up to the portfolio\'s DTS.',lv:function(v){return f(v,1);},ac:function(v){return sg(v,1);},act:true}};
+function bondTrade(k){var t=BW[k]-BD[k].w0;return Math.abs(t)<0.004?0:t;}
+/* aggregate a set of bonds: index, current and proposed market value and CTDTS, trades, expected return against the index */
+function seg(ids){var s={n:ids.length,Wi:0,W0:0,W1:0,Ci:0,C0:0,C1:0,tr:0,gross:0,nTr:0,gd:0,ac:0,mu:0,buy:0,sell:0,buyC:0,sellC:0},i;
+  for(i=0;i<ids.length;i++){var k=ids[i],d=BD[k],t=bondTrade(k);s.Wi+=d.wb;s.W0+=d.w0;s.W1+=BW[k];s.Ci+=d.wb*d.dts;s.C0+=d.w0*d.dts;s.C1+=BW[k]*d.dts;
+    if(t!==0){s.tr+=t;s.gross+=Math.abs(t);s.nTr++;s.gd+=Math.abs(t)*d.dts;if(t>0){s.buy+=t;s.buyC+=t*d.dts;}else{s.sell-=t;s.sellC-=t*d.dts;}}s.ac+=(BW[k]-d.wb)*(d.mu-muB);s.mu+=d.wb*d.mu;}
+  s.xr=s.Wi>1e-9?s.mu/s.Wi-muB:null;s.trC=s.C1-s.C0;s.trDts=s.gross>1e-9?s.gd/s.gross*100:null;
+  s.both=s.buy>1e-9&&s.sell>1e-9;s.sw=s.both&&Math.abs(s.tr)<0.02*s.gross;return s;}   // sw: a switch, buys and sells that offset
+/* the trade of a row in dollars: a switch shows what is traded each way, a mix of buys and sells shows the net */
+function tradeTxt(s){return !s.nTr?'no trade':s.sw?'switch $'+mio(usd(s.gross/2))+' mio':money(s.tr)+(s.both?' net':'');}
+function levels(s,m){
+  if(m==='mv')return {idx:s.Wi,now:s.W0,nw:s.W1};
+  if(m==='ct')return {idx:s.Ci,now:s.C0,nw:s.C1};
+  if(m==='ratio')return s.Ci>1e-9?{idx:1,now:s.C0/s.Ci,nw:s.C1/s.Ci}:{idx:null,now:null,nw:null};
+  return {idx:s.Wi>1e-9?s.Ci/s.Wi*100:null,now:s.W0>1e-9?s.C0/s.W0*100:null,nw:s.W1>1e-9?s.C1/s.W1*100:null};}
+function dif(a,b){return a==null||b==null?null:a-b;}
+function flow(s,m){var L=levels(s,m);return m==='mv'?s.tr:m==='ct'?s.trC:dif(L.nw,L.now);}
+/* levels at which to look at the book */
+var LEVELS=[['reg','Region'],['q','Quality (rating)'],['dur','Duration'],['sec','Type'],['country','Country'],['bucket','Country × type'],['bond','Bond']];
+var DIM={reg:{names:REG,of:function(k){return B[BD[k].b].reg;}},q:{names:QUAL,of:function(k){return B[BD[k].b].q;}},dur:{names:DURB,of:function(k){return BD[k].db;}},sec:{names:SECN,of:function(k){return B[BD[k].b].sec;}}};
+function allIds(){var a=[];for(var k=0;k<BD.length;k++)a.push(k);return a;}
+function groups(level,ids){ids=ids||allIds();var out=[],map={},k;
+  function add(key,name,sub,path,id){var g=map[key];if(!g){g=map[key]={name:name,sub:sub,path:path,ids:[]};out.push(g);}g.ids.push(id);}
+  for(var a=0;a<ids.length;a++){k=ids[a];var d=BD[k],b=B[d.b];
+    if(DIM[level]){var v=DIM[level].of(k);add(v,DIM[level].names[v],'',[{t:'g',dim:level,id:v}],k);}
+    else if(level==='country')add(d.c,b.country,'',[{t:'c',c:d.c}],k);
+    else if(level==='bucket')add(d.b,b.country,SECS[b.sec]+' · '+QUAL[b.q],[{t:'c',c:d.c},{t:'s',by:'sec',id:b.sec}],k);
+    else add(k,d.name,SECS[b.sec]+' · '+QUAL[b.q],[{t:'b',k:k}],k);}
+  if(DIM[level])out.sort(function(x,y){return x.path[0].id-y.path[0].id;});
+  out.forEach(function(g){g.s=seg(g.ids);});return out;}
+
+/* ---------- scorecard and summary ---------- */
+var SH=null;
+function refresh(){SH=shocks(U,P);CTX=cases(U,P);CTX.sofr=P.sofr;M0=metrics(U,U.w0,CTX);}
+function meter(frac,cls){return '<div class="meter '+(cls||'')+'"><i style="width:'+Math.max(0,Math.min(100,frac*100)).toFixed(1)+'%"></i></div>';}
+function renderStrip(){var m=R.m,st={};R.rep.forEach(function(x){if(!st[x.kind])st[x.kind]=x.st;});
+  function cls(k){return st[k]==='breach'?'bad':(st[k]==='max'||st[k]==='min'?'full':'');}
+  var bp=(m.beta-P.betaMin)/(P.betaMax-P.betaMin);
+  $('kpis').innerHTML=
+   '<div class="kpi" data-tip="Expected return over the index for the proposed portfolio, after trading costs, with cash earning SOFR. Below it, the same for today\'s portfolio."><div class="l">Exp. alpha</div><div class="v">'+sg(m.net,0)+'<small>bp</small></div><div class="d">now '+sg(M0.alpha,0)+'</div></div>'+
+   '<div class="kpi" data-tip="Expected tracking error of the proposed portfolio against the index, and the limit. The bar shows how much of the limit is used; it turns amber when the limit binds."><div class="l">Track. error</div><div class="v">'+f(m.te,0)+'<small>bp</small></div><div class="d">max '+P.te+'</div>'+meter(m.te/P.te,cls('Tracking error'))+'</div>'+
+   '<div class="kpi" data-tip="Beta of the proposed portfolio to the index, and the allowed range. The marker shows where it sits in the range."><div class="l">Beta</div><div class="v">'+f(m.beta)+'</div><div class="d">'+betaTxt()+'</div><div class="meter '+cls('Beta')+'"><b style="left:'+Math.max(2,Math.min(98,bp*100)).toFixed(1)+'%"></b></div></div>'+
+   '<div class="kpi" data-tip="One-way turnover of the proposed trades as % of NAV, and the limit."><div class="l">Turnover</div><div class="v">'+f(m.turnover,1)+'<small>%</small></div><div class="d">max '+P.turnover+'</div>'+meter(m.turnover/P.turnover,cls('Turnover'))+'</div>';
+}
+function tradeStats(){var nb=0,cs={},minC=1e9,minU=1e9,buy=0,sell=0,k;for(k=0;k<BD.length;k++){var t=bondTrade(k);if(t!==0){nb++;cs[BD[k].c]=1;minC=Math.min(minC,Math.abs(t)*BD[k].dts);minU=Math.min(minU,usd(Math.abs(t)));if(t>0)buy+=t;else sell-=t;}}
+  return {nb:nb,nc:Object.keys(cs).length,minC:minC,minU:minU,buy:buy,sell:sell};}
+function renderSummary(){var m=R.m,ts=tradeStats();
+  // [label, current, proposed, limit, current outside?, proposed outside?, help]
+  var rows=[['Expected alpha, net',bp0(M0.alpha),bp0(m.net),'',0,0,'Expected return over the index, after trading costs. Cash earns SOFR.'],
+   ['Trading cost','',f(m.cost,0)+' bp<small>$'+mio(m.cost/1e4*P.nav)+' mio</small>','',0,0,'Bid-ask cost of the proposed trades, in bp of NAV and in dollars.'],
+   ['Tracking error',f(M0.te,0)+' bp',f(m.te,0)+' bp','≤ '+P.te+' bp',M0.te>P.te+tolOf(P.te),m.te>P.te+tolOf(P.te),'Expected volatility of the return difference against the index.'],
+   ['Information ratio',f(M0.te>0.5?M0.alpha/M0.te:0),f(m.ir),'',0,0,'Expected alpha divided by tracking error.'],
+   ['Beta',f(M0.beta),f(m.beta),betaTxt(),M0.beta<P.betaMin-0.004||M0.beta>P.betaMax+0.004,m.beta<P.betaMin-0.004||m.beta>P.betaMax+0.004,'Sensitivity to the index\'s spread moves, from the covariance matrix.'],
+   ['DTS ratio',f(M0.ratio)+'×',f(m.ratio)+'×','',0,0,'Portfolio DTS divided by index DTS ('+num(U.benchDts*100)+').'],
+   ['Active CTDTS',sgn(M0.adts),sgn(m.adts),'',0,0,'Portfolio DTS minus index DTS.'],
+   ['Bull-case alpha',bp0(M0.bull),bp0(m.bull),'≥ '+bp0(P.bull),M0.bull<P.bull-0.6,m.bull<P.bull-0.6,'Alpha if every name lands in its bull case at once.'],
+   ['Bear-case alpha',bp0(M0.bear),bp0(m.bear),'≥ '+bp0(P.bear),M0.bear<P.bear-0.6,m.bear<P.bear-0.6,'Alpha if every name lands in its bear case at once.'],
+   ['Worst single name',bp0(M0.name.v),bp0(m.name.v),'≥ −'+P.name+' bp',M0.name.v<-P.name-0.6,m.name.v<-P.name-0.6,'Largest alpha loss if one country alone lands in its bull or bear case.'],
+   ['Cash',f(M0.cash,1)+'%',f(m.cash,1)+'%',P.cashMin+'–'+P.cashMax+'%',M0.cash<P.cashMin-0.03||M0.cash>P.cashMax+0.03,m.cash<P.cashMin-0.03||m.cash>P.cashMax+0.03,'Cash as % of NAV. It earns SOFR ('+P.sofr+'%).'],
+   ['Turnover','',f(m.turnover,1)+'%<small>$'+mio(usd(m.turnover))+' mio</small>','≤ '+P.turnover+'%',0,m.turnover>P.turnover+0.05,'One-way turnover of the proposed trades.'],
+   ['Trades','',ts.nb+' bonds<small>'+ts.nc+' countries</small>','',0,0,'Number of bond trades and of countries traded.']];
+  $('sum').innerHTML='<thead><tr><th>Measure</th><th>Current</th><th>Proposed</th><th>Limit</th></tr></thead><tbody>'+rows.map(function(r){return '<tr><td><span data-tip="'+esc(r[6])+'">'+r[0]+'</span></td><td'+(r[4]?' class="bad"':'')+'>'+r[1]+'</td><td'+(r[5]?' class="bad"':'')+'>'+r[2]+'</td><td>'+r[3]+'</td></tr>';}).join('')+'</tbody>';
+  var ft='Worst single name now: '+caseName(M0.name)+'. Proposed: '+caseName(m.name)+'. Red marks a value outside its limit.';
+  if(ts.nb&&minOn()){ft+=' Smallest trade: $'+mio(ts.minU)+' mio; smallest by risk: '+f(ts.minC,1)+' CTDTS.';
+    if(R.min.small)ft+=' '+R.min.small+' smaller trade'+(R.min.small>1?'s were':' was')+' kept to bring a limit back in line'+(R.sold&&R.sold.length?' or to sell a small position':'')+'.';
+    if(R.min.neutral.length)ft+=' Switch with no net country trade: '+R.min.neutral.map(function(c){return CTRY[c][0];}).join(', ')+'.';}
+  if(R.sold&&R.sold.length)ft+=' Sold whole as small positions: '+R.sold.map(function(c){return CTRY[c][0];}).join(', ')+'.';
+  $('sum-foot').textContent=ft;
+  if(!R.feasible){var br=R.rep.filter(function(x){return x.st==='breach';}).slice(0,6).map(function(x){return esc(x.name+(x.kind==='Name'?(x.up?' rally':' sell-off'):''));});
+    $('alert').innerHTML='<div class="alert" role="alert">No portfolio meets every limit at once. The closest attempt is shown. Limits it misses: '+(br.join(', ')||'several, by a small margin')+'.</div>';}
+  else $('alert').innerHTML='';
+}
+/* ---------- price of each binding limit ---------- */
+function priceRows(){var out=[],by={};
+  R.rep.forEach(function(x){if(x.st==='max'||x.st==='min')(by[x.key]=by[x.key]||[]).push(x);});
+  Object.keys(STEP).forEach(function(k){var hits=by[k]||[],pr=R.price[k]||0,st=STEP[k];
+    var nv=stepTo(k),d=nv-P[k],full=pr*Math.abs(st.d)/st.u*100,has=G&&(k in G),ex=has&&G[k]!=null?G[k]:null;
+    if(!hits.length&&full<0.05&&!(ex>0.05))return;
+    out.push({k:k,hits:hits,d:d,nv:nv,est:pr*Math.abs(d)/st.u*100,exact:ex,wait:!has&&!GD,rank:ex!=null?ex:full});});
+  out.sort(function(a,b){return b.rank-a.rank;});return out;}
+function priceDesc(o){var k=o.k,h=o.hits;
+  if(k==='te')return ['Tracking error','at '+P.te+' bp'];
+  if(k==='turnover')return ['Turnover','at '+P.turnover+'%'];
+  if(k==='betaMax')return ['Beta','at max '+f(P.betaMax)];
+  if(k==='betaMin')return ['Beta','at min '+f(P.betaMin)];
+  if(k==='cashMin')return ['Cash','at min '+P.cashMin+'%'];
+  if(k==='cashMax')return ['Cash','at max '+P.cashMax+'%'];
+  if(k==='bull')return ['Bull-case alpha','at '+bp0(P.bull)];
+  if(k==='bear')return ['Bear-case alpha','at '+bp0(P.bear)];
+  var nm={country:'Country active limit',region:'Region active limit',quality:'Quality active limit',sector:'Type active limit',name:'Single-name limit'}[k],lim=k==='name'?P.name+' bp':'±'+P[k]+'%';
+  if(!h.length)return [nm,'close to '+lim];
+  h=h.slice().sort(function(a,b){return (b.price||0)-(a.price||0);});
+  var show=h.slice(0,3).map(function(x){return x.name+(k==='name'?(x.up?' rally':' sell-off'):'');}).join(', ')+(h.length>3?' +'+(h.length-3):'');
+  return [nm,show+' at '+lim];}
+function renderPrices(){
+  if(!R.feasible){$('price-cap').textContent='';$('prices').innerHTML='';$('forced').innerHTML='';return;}
+  var rows=priceRows(),mx=0;rows.forEach(function(o){if(!o.wait)mx=Math.max(mx,o.rank);});
+  $('price-cap').textContent=rows.length?'Alpha gained by loosening each binding limit one step, solved again for each. Tap a step to apply it.':'';
+  $('prices').innerHTML=rows.length?rows.map(function(o){var d=priceDesc(o),st=STEP[o.k],end=Math.abs(o.d)<1e-9;
+    var ptip=end?'This limit is already at the end of its slider.':o.exact!=null?'Loosening this limit alone by '+trim(o.d)+st.s+' adds '+f(o.exact,1)+' bp of expected alpha, found by solving the whole problem again.':'The gain from loosening this limit alone by '+trim(o.d)+st.s+' is being calculated.';
+    return '<div class="prow"><div class="pt" data-tip="'+esc(ptip)+'"><b>'+d[0]+'</b><small>'+esc(d[1])+'</small></div>'+
+      '<div class="pg" data-tip="'+esc(ptip)+'"><span class="pbar"><i style="width:'+(mx>0&&!o.wait?Math.max(0,o.rank/mx*100):0).toFixed(1)+'%"></i></span><b>'+(end?'–':o.exact!=null?'+'+f(o.exact,1)+' bp':o.wait?'…':'≈ +'+f(o.est,1)+' bp')+'</b></div>'+
+      '<button class="pbtn" data-k="'+o.k+'" data-v="'+o.nv+'"'+(end?' disabled':'')+' data-tip="Loosen this limit by one step and solve again." aria-label="Loosen '+d[0]+' by '+trim(st.d)+st.s+'">'+(end?(kept(o.k)?'kept':'at end'):sgt(o.d)+st.s)+'</button></div>';}).join(''):
+    '<span class="pill slack">No limit is binding. Alpha is capped by trading cost.</span>';
+  var fo=R.rep.filter(function(x){return x.st==='forced';});
+  $('forced').innerHTML=fo.map(function(x){return '<span class="pill slack">'+esc(x.name)+(x.kind==='Macro'?' exposure '+bp0(x.val)+': outside its macro limit because of an override':x.kind==='Name'?(x.up?' rally ':' sell-off ')+bp0(x.val)+': beyond the single-name limit because of an override':' '+sg(x.val,1)+'%: outside its ±'+P[x.key]+'% limit because of an override')+'</span>';}).join('');
+  tidyTip();
+}
+$('prices').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;var k=b.dataset.k;P[k]=+b.dataset.v;syncControls();
+  var el=$('sl-'+k);el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');run();});
+
+/* ---------- bar rows ---------- */
+function barHTML(v,max,cur,lim,one){var h='<span class="bar">',la,li;
+  if(lim!=null){la=Array.isArray(lim)?lim:(one?[-lim]:[-lim,lim]);for(li=0;li<la.length;li++)if(la[li]!=null&&isFinite(la[li])&&Math.abs(la[li])<=max*1.0001)h+='<u style="left:'+(50+la[li]/max*50).toFixed(2)+'%"></u>';}
+  if(v!=null&&Math.abs(v)>1e-9)h+='<i class="'+(v>0?'pos':'neg')+'" style="width:'+Math.min(50,Math.abs(v)/max*50).toFixed(2)+'%"></i>';
+  if(cur!=null)h+='<s style="left:'+(50+Math.max(-50,Math.min(50,cur/max*50))).toFixed(2)+'%"></s>';
+  return h+'</span>';}
+function bar2(b,s,max){var h='<span class="bar">';
+  if(s>1e-9)h+='<i class="neg" style="width:'+Math.min(50,s/max*50).toFixed(2)+'%"></i>';
+  if(b>1e-9)h+='<i class="pos" style="width:'+Math.min(50,b/max*50).toFixed(2)+'%"></i>';
+  return h+'</span>';}
+function axisHTML(max,l,r,fmt){return '<div class="axis"><span></span><div><span><em>'+l+' </em>−'+fmt(max)+'</span><span>0</span><span>+'+fmt(max)+'<em> '+r+'</em></span></div><span></span></div>';}
+function axFmt(m){return m==='mv'?function(v){return f(v,1);}:m==='ct'?function(v){return f(v,0);}:m==='ratio'?function(v){return f(v,2);}:function(v){return num(v);};}
+function pathAttr(p){return esc(JSON.stringify(p));}
+/* position against the index, before → after, in the chosen measure */
+function posText(g){var s=g.s,L=levels(s,measure),M=MEAS[measure];
+  if(M.act)return '<span>active '+na(dif(L.now,L.idx),M.ac)+' → '+na(dif(L.nw,L.idx),M.ac)+'</span>';
+  if(measure==='ratio')return '<span>ratio '+na(L.now,M.lv)+' → '+na(L.nw,M.lv)+'</span>';
+  if(g.ids.length===1)return '';                       // one bond: its DTS does not change, and it is shown on the right
+  return '<span>DTS '+na(L.now,M.lv)+' → '+na(L.nw,M.lv)+'</span> <span>index '+na(L.idx,M.lv)+'</span>';}
+/* what a mouse shows over any row: the position in all four measures at once */
+function rowTip(g){var s=g.s,rt=function(a,b){return b>1e-9?f(a/b,2)+'×':'–';},dt=function(c,w){return w>1e-9?num(c/w*100):'–';};
+  return g.name+(g.sub?' ('+g.sub+')':'')+
+    '\nTrade: '+(s.nTr?'net '+sg(s.tr)+'% of NAV, '+money(s.tr)+', '+sg(s.trC,1)+' CTDTS'+(s.both?'\nBuys $'+mio(usd(s.buy))+' mio, sells $'+mio(usd(s.sell))+' mio':''):'none')+
+    '\nMarket value %: index '+f(s.Wi)+', now '+f(s.W0)+', new '+f(s.W1)+
+    '\nCTDTS: index '+f(s.Ci,1)+', now '+f(s.C0,1)+', new '+f(s.C1,1)+
+    '\nDTS: index '+dt(s.Ci,s.Wi)+', now '+dt(s.C0,s.W0)+', new '+dt(s.C1,s.W1)+
+    '\nDTS ratio: now '+rt(s.C0,s.Ci)+', new '+rt(s.C1,s.Ci)+
+    '\nExpected return vs index: '+na(s.xr,function(v){return sg(v,1)+'%';})+
+    '\nClick to drill down.';}
+
+/* ---------- trades ---------- */
+function renderTrades(){var gs=groups(tlevel).filter(function(g){return g.s.nTr>0;}),M=MEAS[measure],dm=measure==='dts',ct=measure==='ct',rt=measure==='ratio';
+  gs.forEach(function(g){var s=g.s;g.net=rt?flow(s,'ratio'):ct?s.trC:s.tr;
+    g.b=rt?Math.max(g.net||0,0):ct?s.buyC:s.buy;g.sl=rt?Math.max(-(g.net||0),0):ct?s.sellC:s.sell;
+    g.key=Math.abs(g.net||0);g.big=Math.max(g.b,g.sl);g.val=dm?na(s.trDts,num):na(g.net,M.ac);});
+  gs.sort(function(a,b){return b.key-a.key||b.big-a.big;});
+  var max=0;gs.forEach(function(g){max=Math.max(max,g.big);});max=max*1.05||1;
+  var ts=tradeStats(),total=gs.length,rows=gs;
+  var h='<p class="totals">'+ts.nb+' bond trades in '+ts.nc+' countries. Buys '+f(ts.buy,1)+'% ($'+mio(usd(ts.buy))+' mio), sells '+f(ts.sell,1)+'% ($'+mio(usd(ts.sell))+' mio). Estimated cost '+f(R.m.cost,0)+' bp.'+
+    (minOn()&&ts.nb?' Smallest trade $'+mio(ts.minU)+' mio.':'')+'</p>';
+  var tip='Each row shows its buys as a blue bar to the right and its sells as an orange bar to the left, all on one scale. The number on the right is '+(dm?'the average DTS of the bonds traded':rt?'the change in DTS ratio':'the net trade')+'. Under each name is the trade in dollars and how the position against the index changes, before → after. Tap a row to drill down to its countries, types, durations and bonds.';
+  h+='<div class="legend" data-tip="'+esc(tip)+'"><span><i style="background:var(--buy)"></i>Buy</span><span><i style="background:var(--sell)"></i>Sell</span><span>'+
+    (dm?'Bars: buys and sells, % of NAV. Right: DTS of the bonds traded':rt?'Bars and right: change in DTS ratio':ct?'Bars: buys and sells, CTDTS. Right: net':'Bars: buys and sells, % of NAV. Right: net')+'</span>'+info(tip,'About the trades chart')+'</div>';
+  if(!rows.length)h+='<p class="note">No trades. The current portfolio is already the best one inside these limits.</p>';
+  else{h+=axisHTML(max,rt?'Lower':'Sell',rt?'Higher':'Buy',axFmt(dm?'mv':measure));
+   if(!showAll&&total>24)rows=rows.slice(0,20);
+   h+=rows.map(function(g){return '<button class="trow" data-path="'+pathAttr(g.path)+'" data-tip="'+esc(rowTip(g))+'"><span class="nm"><b>'+esc(g.name)+'</b><small>'+(g.sub?'<span>'+g.sub+'</span> ':'')+'<span>'+tradeTxt(g.s)+'</span> '+posText(g)+'</small></span>'+bar2(g.b,g.sl,max)+'<span class="val">'+g.val+'</span></button>';}).join('');
+   if(rows.length<total)h+='<p style="margin:10px 0 0"><button class="chip" id="more">Show all '+total+'</button></p>';}
+  $('panel').innerHTML=h;
+}
+
+/* ---------- trade selection: rank the trades, untick some, see the result, redistribute ---------- */
+function isOff(k){return !!(DES[k]||DESC[BD[k].c]);}
+function tradedIds(){var a=[];for(var k=0;k<BD.length;k++)if(bondTrade(k)!==0)a.push(k);return a;}
+function pruneSel(){var has={},k;tradedIds().forEach(function(j){has[BD[j].c]=1;});
+  for(k in DES)if(bondTrade(+k)===0)delete DES[k];for(k in DESC)if(!has[k])delete DESC[k];}
+/* statistics of the portfolio when the trades for which off(k) is true are left out: their money stays in, or comes from, cash */
+function selState(off){var w=new Float64Array(n),k,turn=0,cost=0,nb=0;
+  for(k=0;k<BD.length;k++){var t=bondTrade(k),d=BD[k],use=t!==0&&!off(k);w[d.b]+=t===0?BW[k]:use?BW[k]:d.w0;
+    if(use){turn+=Math.abs(t);cost+=Math.abs(t)/100*P.cost*B[d.b].tc;nb++;}}
+  var m=metrics(U,w,CTX);m.turnover=turn/2;m.cost=cost;m.net=m.alpha-cost;m.nb=nb;m.w=w;return m;}
+function groupBreaches(w){var out=[],ct=P.basis==='ct',Db=U.benchDts;
+  [['c','country',CTRY.length,function(x){return CTRY[x][0];}],['reg','region',REG.length,function(x){return REG[x];}],['q','quality',QUAL.length,function(x){return QUAL[x];}],['sec','sector',SECN.length,function(x){return SECN[x];}]].forEach(function(d){
+    var a=new Float64Array(d[2]),i,g;for(i=0;i<n;i++)a[B[i][d[0]]]+=(w[i]-U.wb[i])*(ct?B[i].dts/Db:1);
+    for(g=0;g<d[2];g++)if(Math.abs(a[g])>P[d[1]]+0.02)out.push(d[3](g)+' '+sg(a[g],1)+'%');});return out;}
+/* attractiveness of each trade: the full proposal with it against without it. It does not depend on what is ticked, so the ranking stays put. */
+function selItems(){var map={},items=[],a=selState(function(){return false;});
+  tradedIds().forEach(function(k){var key=slevel==='country'?'c'+BD[k].c:'b'+k,it=map[key];if(!it){it=map[key]={key:key,ids:[],c:BD[k].c,k:k};items.push(it);}it.ids.push(k);});
+  items.forEach(function(it){var set={},nOn=0;it.ids.forEach(function(k){set[k]=1;if(!isOff(k))nOn++;});
+    var b=selState(function(k){return !!set[k];});
+    it.da=a.net-b.net;it.dr=a.te-b.te;it.on=nOn===it.ids.length;it.mixed=nOn>0&&!it.on;it.s=seg(it.ids);
+    it.grp=it.da>0.005?(it.dr<=0.05?0:1):(it.dr<-0.05?2:3);
+    it.score=it.grp===0?it.da:it.grp===1?it.da/it.dr:it.grp===2?it.da/(-it.dr):it.da;
+    if(slevel==='country'){it.name=CTRY[it.c][0];it.sub='';it.path=[{t:'c',c:it.c}];}
+    else{var d=BD[it.k],bb=B[d.b];it.name=d.name;it.sub=SECS[bb.sec]+' · '+QUAL[bb.q];it.path=[{t:'b',k:it.k}];}});
+  items.sort(function(x,y){return x.grp-y.grp||y.score-x.score;});return items;}
+function redistribute(){var k;for(k in DESC)bucketsOf(+k).forEach(function(i){if(!LOCK[i])LOCK[i]=1;});for(k in DES)FROZ[k]=1;DES={};DESC={};renderOverrides();run();}
+function renderSel(){var items=selItems(),all=selState(function(){return false;}),cur=selState(isOff),nOff=all.nb-cur.nb,fk=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.sel:null;
+  var nEx=Object.keys(FROZ).length+Object.keys(LOCK).length,h='';
+  h+='<div class="row" style="margin-bottom:8px"><div class="seg" id="slevel" role="group" aria-label="Rank by"><button data-l="country" aria-pressed="'+(slevel==='country')+'" data-tip="Rank and tick whole countries: all of a country\'s bond trades together.">By country</button><button data-l="bond" aria-pressed="'+(slevel==='bond')+'" data-tip="Rank and tick single bond trades.">By bond</button></div>'+
+    '<button class="chip go" id="redo"'+(nOff?'':' disabled')+' data-tip="Solve again with the unticked countries and bonds left untouched, so the optimizer spreads their trades over everything else. Unticked countries are held; unticked bonds are not traded. They then appear under Overrides.">Redistribute</button>'+
+    (nOff?'<button class="link" id="selall" data-tip="Tick every trade again.">Select all</button>':'')+'</div>';
+  h+='<p class="totals">'+(nOff?nOff+' of '+all.nb+' bond trades unticked. Their money sits in cash until you redistribute.':'All '+all.nb+' bond trades are selected. Untick any you do not want: the statistics update at once.')+
+    (nEx?' Some positions are already excluded by overrides. <button class="link" id="selclear">Clear them</button>':'')+'</p>';
+  // statistics: all trades against the ticked ones
+  function row(l,a,b,lim,bad,tip){return '<tr><td><span data-tip="'+esc(tip)+'">'+l+'</span></td><td>'+a+'</td><td'+(bad?' class="bad"':'')+'>'+b+'</td><td>'+lim+'</td></tr>';}
+  var ir=function(m){return m.te>0.5?f(m.net/m.te):'–';};
+  h+='<div class="scroll"><table class="sum"><thead><tr><th>Measure</th><th>All trades</th><th>Selected</th><th>Limit</th></tr></thead><tbody>'+
+    row('Expected alpha, net',bp0(all.net),bp0(cur.net),'',0,'Expected return over the index after trading costs, with cash earning SOFR.')+
+    row('Tracking error',f(all.te,0)+' bp',f(cur.te,0)+' bp','≤ '+P.te+' bp',cur.te>P.te+tolOf(P.te),'Expected volatility of the return difference against the index.')+
+    row('Information ratio',ir(all),ir(cur),'',0,'Expected alpha divided by tracking error.')+
+    row('Beta',f(all.beta),f(cur.beta),betaTxt(),cur.beta<P.betaMin-0.004||cur.beta>P.betaMax+0.004,'Sensitivity to the index\'s spread moves.')+
+    row('Bull-case alpha',bp0(all.bull),bp0(cur.bull),'≥ '+bp0(P.bull),cur.bull<P.bull-0.6,'Alpha if every name lands in its bull case at once.')+
+    row('Bear-case alpha',bp0(all.bear),bp0(cur.bear),'≥ '+bp0(P.bear),cur.bear<P.bear-0.6,'Alpha if every name lands in its bear case at once.')+
+    row('Worst single name',bp0(all.name.v),bp0(cur.name.v),'≥ −'+P.name+' bp',cur.name.v<-P.name-0.6,'Largest alpha loss if one country alone lands in its bull or bear case. Now: '+caseName(cur.name)+'.')+
+    row('Cash',f(all.cash,1).replace('-','−')+'%',f(cur.cash,1).replace('-','−')+'%',P.cashMin+'–'+P.cashMax+'%',cur.cash<P.cashMin-0.03||cur.cash>P.cashMax+0.03,'Cash as % of NAV. An unticked buy leaves its money in cash; an unticked sell is paid for from cash.')+
+    row('Turnover',f(all.turnover,1)+'%',f(cur.turnover,1)+'%','≤ '+P.turnover+'%',cur.turnover>P.turnover+0.05,'One-way turnover of the trades.')+
+    row('Trading cost',f(all.cost,0)+' bp',f(cur.cost,0)+' bp','',0,'Bid-ask cost of the trades.')+
+    row('Bond trades',all.nb,cur.nb,'',0,'Number of bond trades.')+'</tbody></table></div>';
+  var gb=nOff?groupBreaches(cur.w):[];
+  if(gb.length)h+='<div class="alert">Outside an active position limit with this selection: '+esc(gb.slice(0,6).join(', '))+(gb.length>6?' and '+(gb.length-6)+' more':'')+'. Redistribute to bring it back inside.</div>';
+  var tip='Attractiveness is the alpha a trade adds (after its trading cost) divided by the tracking error it adds, both in bp, measured by taking that one trade out of the full proposal and leaving its money in cash. Trades that add alpha and cut tracking error come first, then the rest by the ratio. Trades that give up alpha to cut risk or raise cash, mostly the sells that fund the buys, come after, and trades that add risk without alpha last.';
+  h+='<div class="legend" data-tip="'+esc(tip)+'" style="margin-top:14px"><span>Best first: alpha added ÷ risk added</span>'+info(tip,'About trade attractiveness')+'</div>';
+  h+='<div class="srow shead"><span></span><span></span><span>Trade, alpha added, risk added</span><span style="text-align:right">Alpha ÷ risk</span></div>';
+  h+=items.map(function(it,ix){var v=it.grp===1||(it.grp===3&&it.dr>0.05)?f(it.da/it.dr,2):it.grp===0||it.grp===2?'cuts risk':'–',
+      note=it.grp===0?'adds alpha':it.grp===2?'costs alpha':it.grp===3?'no alpha':'',
+      vt=it.grp===0?'Adds alpha and lowers tracking error: the best kind of trade.':it.grp===1?'Each bp of tracking error this trade adds brings '+f(it.da/it.dr,2)+' bp of alpha.':it.grp===2?'Lowers tracking error or raises cash at a cost in alpha. Usually a sale that funds the buys.':'Adds tracking error without adding alpha by itself. It is in the proposal because of a limit or to fund other trades.';
+    return '<div class="srow'+(it.on||it.mixed?'':' off')+'"><span class="rk">'+(ix+1)+'</span><input type="checkbox" data-sel="'+it.key+'"'+(it.on?' checked':'')+(it.mixed?' data-ind="1"':'')+' aria-label="Include the trade in '+esc(it.name)+'">'+
+      '<button class="snm" data-path="'+pathAttr(it.path)+'" data-tip="'+esc(rowTip({name:it.name,sub:it.sub,s:it.s}))+'"><b>'+esc(it.name)+(it.sub?'<span class="q">'+it.sub+'</span>':'')+'</b><small><span>'+tradeTxt(it.s)+'</span><span>alpha '+sg(it.da,1)+' bp</span><span>risk '+sg(it.dr,1)+' bp</span></small></button>'+
+      '<span class="val" data-tip="'+esc(vt)+'">'+v+(note?'<small>'+note+'</small>':'')+'</span></div>';}).join('');
+  if(!items.length)h+='<p class="note">No trades to select. The current portfolio is already the best one inside these limits.</p>';
+  h+='<p class="foot">Tap a name for its details. The other tabs keep showing the full proposal until you redistribute.</p>';
+  $('panel').innerHTML=h;
+  Array.prototype.forEach.call($('panel').querySelectorAll('[data-ind]'),function(x){x.indeterminate=true;});
+  if(fk){var el=$('panel').querySelector('[data-sel="'+fk+'"]');if(el)el.focus({preventScroll:true});}}
+$('panel').addEventListener('change',function(e){var key=e.target.dataset&&e.target.dataset.sel;if(!key)return;var on=e.target.checked,c,k;
+  if(key.charAt(0)==='c'){c=+key.slice(1);tradedIds().forEach(function(j){if(BD[j].c===c)delete DES[j];});if(on)delete DESC[c];else DESC[c]=1;}
+  else{k=+key.slice(1);c=BD[k].c;
+    if(on){if(DESC[c]){delete DESC[c];tradedIds().forEach(function(j){if(BD[j].c===c&&j!==k)DES[j]=1;});}delete DES[k];}else DES[k]=1;}
+  renderSel();});
+
+/* ---------- macro factors: active exposure in bp of alpha for a +1 standard deviation move in each factor ---------- */
+var MAC=MACM;   // the macro factors: the engine's defaults, or the ones named in the data file
+var MR=U.MR;   // return of each bond, in %, for a +1 std move in each factor: made by the engine, which also limits the exposures
+function effW(k){return bondTrade(k)!==0&&isOff(k)?BD[k].w0:BW[k];}
+function macExp(wf){var e=new Float64Array(MAC.length),k,j;for(k=0;k<BD.length;k++){var a=wf(k)-BD[k].wb;for(j=0;j<MAC.length;j++)e[j]+=a*MR[k][j];}return e;}
+function macBlock(link){var now=macExp(function(k){return BD[k].w0;}),pro=macExp(function(k){return BW[k];}),sel=macExp(effW),hasSel=tradedIds().some(isOff),max=0,j;
+  for(j=0;j<MAC.length;j++)max=Math.max(max,Math.abs(now[j]),Math.abs(pro[j]),Math.abs(sel[j]));
+  var mb=max;for(j=0;j<MAC.length;j++)[P.macMin[j],P.macMax[j]].forEach(function(l){if(Math.abs(l)<=2.5*mb)max=Math.max(max,Math.abs(l));});max=max*1.12||1;
+  var mst={};R.rep.forEach(function(x){if(x.kind==='Macro')mst[x.f]=x.st;});
+  var tip='Alpha gained or lost against the index, in bp, if the factor moves up by 1 standard deviation and nothing else changes. It is the sum over all bonds of active weight × the bond\'s return sensitivity to the factor. The bar is the proposed portfolio and the ring is today\'s. The ticks are the minimum and maximum set under Limits; the optimizer applies them at bucket level, so a bond-level number here can sit a few bp past a tick. It is recalculated after every change.';
+  return '<div class="expo"><h3><span data-tip="'+esc(tip)+'">Macro factor exposures</span> <span class="q">bp of alpha per +1 std</span>'+info(tip,'About macro factor exposures')+'</h3>'+axisHTML(max,'Loses','Gains',function(v){return f(v,0);})+MAC.map(function(m,ix){
+    var v=hasSel?sel[ix]:pro[ix];
+    return '<button class="trow" data-mac="'+ix+'" data-tip="'+esc(m.name+', +1 std = '+m.std+'\n'+m.tip+'\nAlpha: '+bp0(now[ix])+' today, '+bp0(pro[ix])+' proposed'+(hasSel?', '+bp0(sel[ix])+' with your selection':'')+'.\n'+(link?'Click for the best trades to change it.':'Click to list its trades below.'))+'"><span class="nm"><b>'+m.name+'</b><small><span>+1 std = '+m.std+'</span> <span>· now '+sg(now[ix],0)+(hasSel?' · proposed '+sg(pro[ix],0):'')+'</span> <span>· limit '+sg(P.macMin[ix],0)+' to '+sg(P.macMax[ix],0)+(mst[ix]==='max'||mst[ix]==='min'?', binding':'')+'</span></small></span>'+barHTML(v,max,now[ix],[P.macMin[ix],P.macMax[ix]])+'<span class="val">'+sg(v,0)+'</span></button>';}).join('')+
+    (hasSel?'<p class="foot">Bars show your selection under the Selection tab, with unticked trades left in cash.</p>':'')+'</div>';}
+/* the five best single trades to push one factor exposure up or down: those that also add alpha first, then the cheapest in alpha per bp of exposure */
+function macTrades(j,dir){var cands=[],rl=rule(),k,best=0;
+  for(k=0;k<BD.length;k++){var d=BD[k],b=B[d.b],lk=LOCK[d.b]|0,W=effW(k),mn=minOn()?minPct(d.dts,rl):0,S=Math.max(0.5,mn),sides=[];
+    if(FROZ[k]||lk===1)continue;
+    if(!lk)sides.push([1,S]);
+    if(W>=S-1e-9)sides.push([-1,S]);else if(W>1e-6&&W>=mn-1e-9)sides.push([-1,W]);
+    sides.forEach(function(sd){var de=sd[0]*sd[1]*MR[k][j];if(de*dir<=1e-9)return;
+      var da=sd[0]*sd[1]*(d.mu-P.sofr)-sd[1]/100*P.cost*b.tc;cands.push({k:k,side:sd[0],size:sd[1],de:de,da:da});best=Math.max(best,Math.abs(de));});}
+  cands=cands.filter(function(x){return Math.abs(x.de)>=0.3*best;});
+  cands.sort(function(x,y){var gx=x.da>=0?0:1,gy=y.da>=0?0:1;if(gx!==gy)return gx-gy;return gx===0?Math.abs(y.de)-Math.abs(x.de):(-x.da/Math.abs(x.de))-(-y.da/Math.abs(y.de));});
+  cands=cands.slice(0,5);
+  var w=new Float64Array(n);for(k=0;k<BD.length;k++)w[BD[k].b]+=effW(k);var te0=metrics(U,w,CTX).te;
+  cands.forEach(function(x){var bi=BD[x.k].b;w[bi]+=x.side*x.size;x.dte=metrics(U,w,CTX).te-te0;w[bi]-=x.side*x.size;});
+  return cands;}
+function renderMac(){if(!MAC.length){$('panel').innerHTML='<p class="note">The data file has no macro factor sensitivities. Add a "macro" list to each bond to see exposures here.</p>';return;}
+  if(macF>=MAC.length)macF=0;var m=MAC[macF],h='';
+  h+='<p class="totals">How much alpha against the index the portfolio gains or loses if a macro factor moves by 1 standard deviation. Tap a factor to see the trades that change it.</p>';
+  h+=macBlock(false);
+  h+='<div class="row" style="margin-top:18px"><label class="lbl" for="macf">Best trades for</label><select class="sel" id="macf" data-tip="The factor whose exposure the trades below raise or lower.">'+MAC.map(function(x,ix){return '<option value="'+ix+'"'+(ix===macF?' selected':'')+'>'+x.name+'</option>';}).join('')+'</select></div>';
+  var tip='Single trades against cash, at the larger of 0.5% of NAV and the minimum trade size, starting from the proposed portfolio. Trades that move the exposure the right way and also add alpha come first, ranked by how much exposure they move. After those come the trades that cost the least alpha per bp of exposure. Trades that move less than 30% of the best available are left out. Limits are not checked here.';
+  var up=macTrades(macF,1),dn=macTrades(macF,-1),mx=0;up.concat(dn).forEach(function(x){mx=Math.max(mx,Math.abs(x.de));});mx=mx*1.05||1;
+  function list(L){if(!L.length)return '<p class="note">No trade moves this exposure that way.</p>';
+    return L.map(function(x,ix){var d=BD[x.k],b=B[d.b];
+      return '<button class="trow" data-path="'+pathAttr([{t:'b',k:x.k}])+'" data-tip="'+esc((x.side>0?'Buy':'Sell')+' $'+mio(usd(x.size))+' mio of '+d.name+' ('+f(x.size,2)+'% of NAV), '+(x.side>0?'paid from':'into')+' cash.\n'+m.name+' exposure: '+sg(x.de,1)+' bp\nExpected alpha, after cost: '+sg(x.da,1)+' bp\nTracking error: '+sg(x.dte,1)+' bp\nClick for the bond.')+'"><span class="nm"><b>'+(ix+1)+'. '+(x.side>0?'Buy':'Sell')+' '+esc(d.name)+'<span class="q">'+QUAL[b.q]+'</span></b><small>$'+mio(usd(x.size))+' mio · alpha '+sg(x.da,1)+' · risk '+sg(x.dte,1)+' bp</small></span>'+barHTML(x.de,mx)+'<span class="val">'+sg(x.de,1)+'</span></button>';}).join('');}
+  h+='<div class="expo"><h3><span data-tip="'+esc(tip)+'">Five best trades to raise it</span>'+info(tip,'About these trades')+'</h3>'+axisHTML(mx,'Lowers','Raises',function(v){return f(v,1);})+list(up)+'</div>';
+  h+='<div class="expo"><h3><span data-tip="'+esc(tip)+'">Five best trades to lower it</span></h3>'+list(dn)+'</div>';
+  h+='<p class="foot">Bars and the number on the right: change in the '+m.name+' exposure, in bp of alpha per +1 std ('+m.std+'). Under each trade: its size, its effect on expected alpha after cost, and on tracking error. Factor sensitivities are generated for the mock-up.</p>';
+  $('panel').innerHTML=h;}
+$('panel').addEventListener('change',function(e){if(e.target.id==='macf'){macF=+e.target.value;renderMac();}});
+
+/* ---------- efficient frontier: alpha against tracking error ---------- */
+function niceStep(range,maxTicks){var raw=range/maxTicks,pw=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10)),q=raw/pw;return (q<=1?1:q<=2?2:q<=2.5?2.5:q<=5?5:10)*pw;}
+function frAt(pts,t){for(var i=1;i<pts.length;i++)if(t>=pts[i-1].te&&t<=pts[i].te){var a=pts[i-1],b=pts[i];return a.net+(b.net-a.net)*(t-a.te)/(b.te-a.te);}return null;}
+function frPts(){return (FR.pts||[]).slice().sort(function(a,b){return a.te-b.te;});}
+function renderFrontier(){
+  if(!R.feasible){$('panel').innerHTML='<p class="note">No frontier to show: the limits cannot all be met.</p>';return;}
+  var fresh=FR.done&&FR.key===frKey(),pts=frPts(),ok=pts.filter(function(p){return p.ok;}),lines=[],h='';
+  if(fresh&&ok.length>1){var at=frAt(ok,M0.te),kink=null;
+    if(at!=null)lines.push('At today’s tracking error of '+f(M0.te,0)+' bp, the best portfolio’s alpha is '+bp0(at)+', against '+bp0(M0.alpha)+' now.');
+    ok.forEach(function(p){if(!kink&&p.ach<p.te-tolOf(p.te))kink=p;});
+    if(kink)lines.push('Above about '+f(kink.ach,0)+' bp the curve is flat: other limits bind first.');
+    if(pts.length>ok.length)lines.push('Limits below '+ok[0].te+' bp are out of reach with '+P.turnover+'% turnover.');}
+  h+='<p class="totals">'+(lines.join(' ')||'Calculating the frontier…')+'</p>';
+  var ftip='The curve is the most expected alpha (after costs) the optimizer can reach at each tracking error limit, keeping every other limit as it is. The index sits at zero alpha and zero tracking error; the slope of a line from the index to a point is its information ratio. Where the curve turns flat, some other limit binds before tracking error does. Tap the curve to move the tracking error limit there.';
+  h+='<div class="legend" data-tip="'+esc(ftip)+'"><span><i class="dot"></i>Proposed</span><span><i class="ring"></i>Current</span><span><i class="dia"></i>Index</span><span><i class="lim"></i>Your limit</span><span><i class="dash"></i>Other limits bind</span>'+info(ftip,'About the frontier')+'</div>';
+  h+='<div class="frc'+(fresh?'':' stale')+'" id="frc"></div>';
+  h+='<p class="foot">Best expected alpha against the index (bp, net of cost) at each tracking error limit, with every other limit unchanged.'+(minOn()?' With a minimum trade size the points away from your limit are close estimates.':'')+' Tap the curve to move the limit there.</p>';
+  if(fresh&&ok.length)h+='<details class="tblv"><summary>Show as table</summary><div class="scroll"><table><thead><tr><th>Limit, bp</th><th>Expected alpha</th><th>Tracking error used</th><th>Information ratio</th></tr></thead><tbody>'+
+    pts.map(function(p){return '<tr><td>'+p.te+'</td><td>'+(p.ok?bp0(p.net):'out of reach')+'</td><td>'+(p.ok?f(p.ach,0)+' bp':'')+'</td><td>'+(p.ok&&p.ach>0.5?f(p.net/p.ach):'')+'</td></tr>';}).join('')+'</tbody></table></div></details>';
+  $('panel').innerHTML=h;drawFrontier();}
+function drawFrontier(){var el=$('frc');if(!el)return;
+  var W=Math.max(260,el.clientWidth),H=W<520?250:320,mL=42,mR=14,mT=12,mB=36,pw=W-mL-mR,ph=H-mT-mB,i,v,s='';
+  var ok=frPts().filter(function(p){return p.ok;}),ys=[M0.alpha,0,R.m.net];ok.forEach(function(p){ys.push(p.net);});
+  var lo=Math.min.apply(null,ys),hi=Math.max.apply(null,ys),pad=Math.max(5,(hi-lo)*0.15);lo-=pad*1.35;hi+=pad;
+  var st=niceStep(hi-lo,5);
+  function X(t){return mL+t/300*pw;}function Y(q){return mT+(hi-q)/(hi-lo)*ph;}
+  function n1(q){return q.toFixed(1);}
+  s+='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Expected alpha against tracking error limit">';
+  for(v=Math.ceil(lo/st)*st;v<=hi+1e-9;v+=st)s+='<line class="fg" x1="'+mL+'" x2="'+(W-mR)+'" y1="'+n1(Y(v))+'" y2="'+n1(Y(v))+'"/><text class="fa" x="'+(mL-10)+'" y="'+n1(Y(v))+'" dy=".32em" text-anchor="end">'+f(v,0)+'</text>';
+  for(i=0;i<=300;i+=50)s+='<text class="fa" x="'+n1(X(i))+'" y="'+(mT+ph+16)+'" text-anchor="middle">'+i+'</text>';
+  s+='<text class="fa" x="'+n1(mL+pw/2)+'" y="'+(H-3)+'" text-anchor="middle">Tracking error limit, bp</text>';
+  s+='<line class="fx" x1="'+mL+'" x2="'+(W-mR)+'" y1="'+(mT+ph)+'" y2="'+(mT+ph)+'"/>';
+  s+='<line class="flim" x1="'+n1(X(P.te))+'" x2="'+n1(X(P.te))+'" y1="'+(mT+2)+'" y2="'+(mT+ph)+'"/>';
+  if(ok.length>1){var kink=-1;for(i=0;i<ok.length;i++)if(ok[i].ach<ok[i].te-tolOf(ok[i].te)){kink=i;break;}
+    var solid=ok,dash=[];
+    if(kink>=0){var kp={te:Math.max(ok[kink].ach,kink?ok[kink-1].te:0),net:ok[kink].net};solid=ok.slice(0,kink).concat([kp]);dash=[kp].concat(ok.slice(kink));}
+    var path=function(a){return a.map(function(p,j){return (j?'L':'M')+n1(X(p.te))+' '+n1(Y(p.net));}).join('');},allp=solid.concat(dash.slice(1));
+    s+='<path class="far" d="'+path(allp)+'L'+n1(X(allp[allp.length-1].te))+' '+(mT+ph)+'L'+n1(X(allp[0].te))+' '+(mT+ph)+'Z"/>';
+    if(solid.length>1)s+='<path class="fl" d="'+path(solid)+'"/>';
+    if(dash.length>1)s+='<path class="fl flat" d="'+path(dash)+'"/>';}
+  var bx=X(0),by=Y(0),cx=X(M0.te),cy=Y(M0.alpha),px=X(Math.min(300,R.m.te)),py=Y(R.m.net);
+  s+='<path class="fbm" d="M'+n1(bx)+' '+n1(by-6)+'l6 6l-6 6l-6 -6z"/>';
+  s+='<circle class="fcur" cx="'+n1(cx)+'" cy="'+n1(cy)+'" r="5"/>';
+  s+='<circle class="fpro" cx="'+n1(px)+'" cy="'+n1(py)+'" r="6"/>';
+  s+='<circle class="fdot" id="fdot" r="4" style="display:none"/>';
+  s+='<text class="flab" x="'+n1(bx+3)+'" y="'+n1(by-14)+'">Index</text>';
+  s+='<text class="flab" x="'+n1(cx)+'" y="'+n1(cy+20)+'" text-anchor="middle">Current</text>';
+  if(px-66>mL)s+='<text class="flab" x="'+n1(px-10)+'" y="'+n1(py-9)+'" text-anchor="end">Proposed</text>';
+  else s+='<text class="flab" x="'+n1(px+11)+'" y="'+n1(py+18)+'">Proposed</text>';
+  el.innerHTML=s+'</svg><div class="ftip" id="ftip" hidden></div>';
+  if(!ok.length)return;
+  var svg=el.firstChild,dot=$('fdot'),tip=$('ftip');
+  function nearest(e){var r=svg.getBoundingClientRect(),t=(e.clientX-r.left-mL)/pw*300,best=null;ok.forEach(function(p){if(!best||Math.abs(p.te-t)<Math.abs(best.te-t))best=p;});return best;}
+  function show(e){var p=nearest(e);if(!p)return;dot.setAttribute('cx',n1(X(p.te)));dot.setAttribute('cy',n1(Y(p.net)));dot.style.display='';
+    tip.hidden=false;tip.innerHTML='Limit '+p.te+' bp: <b>'+bp0(p.net)+' alpha</b>'+(p.ach<p.te-tolOf(p.te)?'<br>uses only '+f(p.ach,0)+' bp':'')+'<br>information ratio '+(p.ach>0.5?f(p.net/p.ach):'–');
+    var tx=Math.min(W-tip.offsetWidth-4,Math.max(4,X(p.te)-tip.offsetWidth/2)),ty=Y(p.net)-tip.offsetHeight-12;if(ty<0)ty=Y(p.net)+14;
+    tip.style.left=tx+'px';tip.style.top=ty+'px';}
+  svg.addEventListener('pointermove',show);svg.addEventListener('pointerdown',show);
+  svg.addEventListener('pointerleave',function(){dot.style.display='none';tip.hidden=true;});
+  svg.addEventListener('click',function(e){var p=nearest(e);if(!p||p.te===P.te||KEEP.te)return;P.te=p.te;syncControls();run();});}
+var rz=null;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){if(tab==='fr'&&R&&R.feasible)drawFrontier();},150);});
+
+/* ---------- limits on a position, on both sides, in any measure ----------
+   Everything is worked out as a band of active market value and then shown in the chosen measure. */
+var CIDS=(function(){var a=CTRY.map(function(){return [];});BD.forEach(function(d,k){a[d.c].push(k);});return a;})(),CB={};
+function dtsOf(s){return s.Wi>1e-9?s.Ci/s.Wi:null;}
+function conv(m,v,s,d){if(!isFinite(v)||m==='mv')return v;if(d==null)return null;return m==='ct'?v*d:s.Ci>1e-9?v*d/s.Ci:null;}   // ratio: as ratio minus 1
+function bandIn(m,bd){if(m==='dts')return null;var lo=conv(m,bd.lo,bd.s,bd.dl),hi=conv(m,bd.hi,bd.s,bd.dh);return lo==null||hi==null?null:[lo,hi];}
+function limTxt(m,v){return v==null||!isFinite(v)?'–':m==='mv'?sg(v,2)+'%':m==='ct'?sg(v,1):f(1+v,2)+'×';}
+function mkBand(parts,s,dl,dh){var lo=-Infinity,hi=Infinity;parts.forEach(function(x){lo=Math.max(lo,x.lo);hi=Math.min(hi,x.hi);});return {lo:lo,hi:hi,parts:parts,s:s,dl:dl,dh:dh};}
+/* region, rating and type: the active position limit only */
+function grpBand(key,s){var d=dtsOf(s);if(d==null)return null;var a=P.basis==='mv'?P[key]:P[key]*U.benchDts/d;return mkBand([{n:'Active position limit',lo:-a,hi:a}],s,d,d);}
+/* a country: its active limit, and the most it can be under or over the index before a rally or a sell-off in it alone costs more than the single-name limit */
+function cband(c){if(CB[c])return CB[c];var s=seg(CIDS[c]),d=dtsOf(s),N=P.name,a=s.W1-s.Wi,cb=R.m.cb[c],ce=R.m.ce[c],ws=0,db=0,de=0;
+  bucketsOf(c).forEach(function(i){ws+=U.wb[i];db+=U.wb[i]*(CTX.bull[i]-B[i].mu);de+=U.wb[i]*(CTX.bear[i]-B[i].mu);});db/=ws;de/=ws;
+  var L=P.basis==='mv'?P.country:P.country*U.benchDts/d,act=s.C1-s.Ci;
+  var parts=[{n:'Country active limit',lo:-L,hi:L},
+    {n:'Bull case: it rallies alone',lo:a<-1e-4&&cb<-1e-4?a*N/(-cb):db>1e-9?-N/db:-Infinity,hi:Infinity},
+    {n:'Bear case: it sells off alone',lo:-Infinity,hi:a>1e-4&&ce<-1e-4?a*N/(-ce):de<-1e-9?N/(-de):Infinity},
+    {n:'No short position',lo:-s.Wi,hi:Infinity}];
+  return CB[c]=mkBand(parts,s,a<-1e-4&&act<0?act/a:d,a>1e-4&&act>0?act/a:d);}
+/* a bond: the room its country has left under the same limits, with every other bond where the proposal puts it */
+function bondBand(k){var d=BD[k],b=B[d.b],N=P.name,a=BW[k]-d.wb,A=0,Act=0,Rc=0,Ec=0;
+  CIDS[d.c].forEach(function(j){var x=BD[j],bb=B[x.b],aj=BW[j]-x.wb;A+=aj;Act+=aj*x.dts;Rc+=aj*(CTX.bull[x.b]-bb.mu)*x.m;Ec+=aj*(CTX.bear[x.b]-bb.mu)*x.m;});
+  var dbk=(CTX.bull[d.b]-b.mu)*d.m,dek=(CTX.bear[d.b]-b.mu)*d.m,L=P.country,Db=U.benchDts;
+  var parts=[P.basis==='mv'?{n:'Room under the country limit',lo:a-L-A,hi:a+L-A}:{n:'Room under the country limit',lo:a+(-L*Db-Act)/d.dts,hi:a+(L*Db-Act)/d.dts},
+    {n:'Bull case: country rallies alone',lo:dbk>1e-9?a-(Rc+N)/dbk:-Infinity,hi:Infinity},
+    {n:'Bear case: country sells off alone',lo:-Infinity,hi:dek<-1e-9?a+(Ec+N)/(-dek):Infinity},
+    {n:'No short position',lo:-d.wb,hi:Infinity}];
+  return mkBand(parts,seg([k]),d.dts,d.dts);}
+/* the drill-down picture of a band: allowed range shaded, index line, today's ring, proposed dot, and the limits that make it up */
+function limitCard(bd){var m=measure==='dts'?'mv':measure,s=bd.s,L=levels(s,m),a0=dif(L.now,L.idx),a1=dif(L.nw,L.idx),B2=bandIn(m,bd)||[bd.lo,bd.hi],lo=B2[0],hi=B2[1];
+  var xs=[0,a0||0,a1||0];if(isFinite(lo))xs.push(lo);if(isFinite(hi))xs.push(hi);
+  var mn=Math.min.apply(null,xs),mx=Math.max.apply(null,xs),pad=(mx-mn)*0.12||1;mn-=pad;mx+=pad;
+  function X(v){return Math.max(0,Math.min(100,(v-mn)/(mx-mn)*100));}
+  var out=a1!=null&&(a1<lo-Math.abs(lo)*0.02-0.01||a1>hi+Math.abs(hi)*0.02+0.01),lp=bd.parts.filter(function(x){return x.lo===bd.lo;})[0],hp=bd.parts.filter(function(x){return x.hi===bd.hi;})[0];
+  var h='<div class="h4row"><h4>Limits on this position'+info('The shaded band is where the active position may sit. Its lower end is the tightest of the limits on being under the index, its upper end the tightest on being over it. The bull-case limit caps an underweight: if this country alone rallies, the alpha lost must stay within the single-name limit. The bear-case limit caps an overweight in the same way for a sell-off. The ring is today\'s position, the dot the proposed one, and the line the index.','About these limits')+'</h4></div>';
+  h+='<div class="lim"><div class="ltrack'+(out?' out':'')+'"><i style="left:'+X(isFinite(lo)?lo:mn).toFixed(2)+'%;right:'+(100-X(isFinite(hi)?hi:mx)).toFixed(2)+'%"></i><em style="left:'+X(0).toFixed(2)+'%"></em>'+(a0!=null?'<s style="left:'+X(a0).toFixed(2)+'%"></s>':'')+(a1!=null?'<b style="left:'+X(a1).toFixed(2)+'%"></b>':'')+'</div>'+
+    '<div class="lcap"><span>min <b>'+limTxt(m,lo)+'</b></span><span>now '+limTxt(m,a0)+' → new <b>'+limTxt(m,a1)+'</b></span><span>max <b>'+limTxt(m,hi)+'</b></span></div></div>';
+  h+='<div class="scroll"><table class="mt"><thead><tr><th>Limit</th><th>Min</th><th>Max</th></tr></thead><tbody>'+bd.parts.map(function(x){var l=conv(m,x.lo,s,bd.dl),u=conv(m,x.hi,s,bd.dh);
+    return '<tr'+(x===lp||x===hp?' class="lbind"':'')+'><td>'+x.n+'</td><td>'+limTxt(m,l)+'</td><td>'+limTxt(m,u)+'</td></tr>';}).join('')+
+    '<tr class="tot"><td>Allowed range</td><td>'+limTxt(m,lo)+'</td><td>'+limTxt(m,hi)+'</td></tr></tbody></table></div>';
+  h+='<p class="foot">'+(m==='mv'?'Active market value, % of NAV.':m==='ct'?'Active CTDTS.':'DTS ratio: 1.00× is the index.')+(measure==='dts'?' Average DTS has no limit of its own, so market value is shown.':'')+' Min is set by: '+(lp?lp.n.toLowerCase():'–')+'. Max is set by: '+(hp?hp.n.toLowerCase():'–')+'.'+(out?' The proposed position is outside the range.':'')+'</p>';
+  return h;}
+
+/* ---------- exposures: active positions against the index ---------- */
+function expoBlock(title,tip,gs,bandOf,chip){var M=MEAS[measure],fm=axFmt(measure);
+  var rows=gs.map(function(g){var L=levels(g.s,measure),bd=bandOf?bandOf(g):null;return {g:g,c:dif(L.now,L.idx),p:dif(L.nw,L.idx),L:L,lim:bd?bandIn(measure,bd):null};});
+  var max=0;rows.forEach(function(r){max=Math.max(max,Math.abs(r.c||0),Math.abs(r.p||0));});
+  var mb=max||1;rows.forEach(function(r){if(r.lim)r.lim.forEach(function(l){if(isFinite(l)&&Math.abs(l)<=2.5*mb)max=Math.max(max,Math.abs(l));});});max=max*1.12||1;
+  var lt=function(v){return !isFinite(v)?'none':measure==='ratio'?f(1+v,2)+'×':M.ac(v);};
+  return '<div class="expo"><h3><span data-tip="'+esc(tip)+'">'+title+'</span>'+(chip&&measure!=='dts'?' <span class="q" data-tip="The limits behind the two ticks on each bar, converted into the measure you are looking at.">'+chip+'</span>':'')+info(tip,'About '+title)+'</h3>'+axisHTML(max,'Under','Over',fm)+rows.map(function(r){
+    var val=M.act?na(r.p,M.ac):na(r.L.nw,M.lv),sub=M.act?'now '+na(r.c,M.ac):'now '+na(r.L.now,M.lv)+(measure==='dts'?' · index '+na(r.L.idx,M.lv):'');
+    if(r.lim)sub+=' · limit '+lt(r.lim[0])+' to '+lt(r.lim[1]);
+    return '<button class="trow" data-path="'+pathAttr(r.g.path)+'" data-tip="'+esc(rowTip(r.g))+'"><span class="nm"><b>'+esc(r.g.name)+'</b><small>'+sub+'</small></span>'+barHTML(r.p,max,r.c,r.lim)+'<span class="val">'+val+'</span></button>';}).join('')+'</div>';}
+function nameBlock(){var rows=[],c;
+  for(c=0;c<CTRY.length;c++){rows.push({c:c,name:CTRY[c][0],sub:'rally',p:R.m.cb[c],c0:M0.cb[c]});rows.push({c:c,name:CTRY[c][0],sub:'sell-off',p:R.m.ce[c],c0:M0.ce[c]});}
+  rows.sort(function(a,b){return a.p-b.p;});rows=rows.slice(0,8);
+  var max=P.name;rows.forEach(function(r){max=Math.max(max,Math.abs(r.p),Math.abs(r.c0));});max*=1.12;
+  var tip='For each country: the alpha gained or lost if that country alone lands in its bull case (a rally) or its bear case (a sell-off) while everything else comes in as expected. An underweight loses in a rally, an overweight in a sell-off. The eight largest losses are shown; the tick is the single-name limit and the ring is today\'s portfolio.';
+  return '<div class="expo"><h3><span data-tip="'+esc(tip)+'">Largest single-name scenario losses</span> <span class="q">limit −'+P.name+' bp</span>'+info(tip,'About single-name losses')+'</h3>'+axisHTML(max,'Loss','Gain',function(v){return f(v,0);})+rows.map(function(r){
+    return '<button class="trow" data-path="'+pathAttr([{t:'c',c:r.c}])+'" data-tip="'+esc(r.name+' '+r.sub+'\nAlpha if it happens alone: '+bp0(r.p)+' with the proposed portfolio, '+bp0(r.c0)+' with today\'s.\nClick to open the country.')+'"><span class="nm"><b>'+esc(r.name)+'</b><small><span>'+r.sub+'</span> <span>· now '+sg(r.c0,0)+'</span></small></span>'+barHTML(r.p,max,r.c0,P.name,true)+'<span class="val">'+sg(r.p,0)+'</span></button>';}).join('')+
+    '<p class="foot">In bp of alpha, whatever measure is selected above.</p></div>';}
+function renderExpo(){
+  var cs=groups('country').map(function(g){var L=levels(g.s,measure);g.k=Math.abs(dif(L.nw,L.idx)||0);return g;}).sort(function(a,b){return b.k-a.k;}).slice(0,10);
+  var t='Each bar is the proposed position against the index: blue above it, orange below. The ring is today\'s position and the two ticks are the lowest and highest position allowed, in whatever measure is selected. Tap a row to drill down.';
+  var h='<div class="legend" data-tip="'+esc(t)+'"><span><i style="background:var(--buy)"></i>Over the index</span><span><i style="background:var(--sell)"></i>Under</span><span><i class="ring"></i>Current</span><span><i class="tick"></i>Limit</span><span>'+
+    (measure==='mv'?'Active market value, % of NAV':measure==='ct'?'Active CTDTS':measure==='ratio'?'DTS ratio minus 1':'DTS of holdings minus the index\'s')+'</span></div>';
+  if(measure==='dts')h+='<p class="foot" style="margin:0 0 4px">The average DTS of the holdings has no limit of its own, so no ticks are drawn in this measure.</p>';
+  var gb=function(key){return function(g){return grpBand(key,g.s);};},bs=P.basis==='mv'?'%':'% of index DTS';
+  h+=expoBlock('Region',t,groups('reg'),gb('region'),'limit ±'+P.region+bs);
+  h+=expoBlock('Quality (rating)',t,groups('q'),gb('quality'),'limit ±'+P.quality+bs);
+  h+=expoBlock('Duration',t+' Buckets are by each bond\'s duration in years. There is no limit on them.',groups('dur'),null);
+  h+=expoBlock('Type',t,groups('sec'),gb('sector'),'limit ±'+P.sector+bs);
+  h+=expoBlock('Ten largest country positions',t+' For a country the lower tick is the tighter of the country limit and the bull-case limit, and the upper tick the tighter of the country limit and the bear-case limit.',cs,function(g){return cband(g.path[0].c);},'country limit, bull and bear');
+  h+=macBlock(true);
+  h+=nameBlock();
+  $('panel').innerHTML=h;}
+
+/* ---------- tables: positions at any level ---------- */
+function cols(level){var M=MEAS[measure],a=M.act,u={mv:'%',ct:'CTDTS',dts:'DTS',ratio:'ratio'}[measure],nm=level==='bond'?'Bond':(LEVELS.filter(function(x){return x[0]===level;})[0]||['','Name'])[1],c=[['name',nm]];
+  c.push(['flow',a?'Trade':'Change',a?'Net trade, '+(measure==='mv'?'% of NAV':'CTDTS')+'.':'Change in the '+M.label+' of the position.']);
+  c.push(['usd','Trade, $ mio','Net trade in millions of dollars.']);
+  c.push(['lnw','New '+u,'The proposed position.'],['lnow','Now '+u,'Today\'s position.']);
+  if(measure!=='ratio')c.push(['idx','Index '+u,'The index.']);
+  if(a)c.push(['nw','Active new','Proposed position minus the index.'],['now','Active now','Today\'s position minus the index.']);
+  if((level==='country'||level==='bond')&&measure!=='dts'){var lw=measure==='ratio'?'DTS ratio':'active position';
+    c.push(['lmin','Limit min','Lowest '+lw+' allowed: the tightest of the country limit, the bull-case single-name limit and a zero holding.'],['lmax','Limit max','Highest '+lw+' allowed: the tighter of the country limit and the bear-case single-name limit.']);}
+  if(level==='bond')c.push(['spread','Spread','Spread in bp.'],['sd','Sprd dur','Spread duration in years.'],['dtsb','DTS','Spread duration × spread in bp.'],['yld','Yield','Yield in %.'],['price','Price','Clean price.']);
+  else c.push(['nb','Bonds','Number of bonds.'],['ntr','Trades','Number of bond trades.']);
+  c.push(['xr','Exp. ret vs index','Expected return minus the index\'s expected return, in % points.'],['ac','Alpha contrib., bp','Proposed active weight × expected return against the index.']);
+  return c;}
+function rowOf(g){var s=g.s,L=levels(s,measure),lp=g.path[g.path.length-1],bd=g.path.length===1&&lp.t==='c'?cband(lp.c):lp.t==='b'&&g.ids.length===1?bondBand(lp.k):null,bb=bd?bandIn(measure,bd):null,r={lmin:bb?bb[0]:null,lmax:bb?bb[1]:null,g:g,name:g.name,flow:flow(s,measure),usd:usd(s.tr),lnw:L.nw,lnow:L.now,idx:L.idx,nw:dif(L.nw,L.idx),now:dif(L.now,L.idx),nb:s.n,ntr:s.nTr,xr:s.xr,ac:s.ac};
+  if(g.ids.length===1&&g.path[g.path.length-1].t==='b'){var d=BD[g.ids[0]];r.spread=d.spread;r.sd=d.sd;r.dtsb=d.dts*100;r.yld=d.yld;r.price=d.price;}return r;}
+var TLV={mv:function(v){return f(v,2);},ct:function(v){return f(v,1);},dts:function(v){return num(v);},ratio:function(v){return f(v,2)+'×';}};   // levels inside tables: the unit is in the heading
+function cell(k,r){var M=MEAS[measure],v=r[k];
+  if(k==='flow')return '<td class="'+(v==null?'':ud(v))+'">'+(v==null||Math.abs(v)<1e-9?'–':M.ac(v))+'</td>';
+  if(k==='usd')return '<td>'+(Math.abs(v)<0.05?'–':(v>0?'+':'−')+mio(v))+'</td>';
+  if(k==='nw'||k==='now')return '<td>'+na(v,M.ac)+'</td>';
+  if(k==='lmin'||k==='lmax')return '<td>'+(v==null||!isFinite(v)?'–':measure==='ratio'?f(1+v,2)+'×':M.ac(v))+'</td>';
+  if(k==='lnw'||k==='lnow'||k==='idx')return '<td>'+na(v,TLV[measure])+'</td>';
+  if(k==='spread'||k==='nb'||k==='ntr')return '<td>'+f(v,0)+'</td>';
+  if(k==='sd'||k==='price')return '<td>'+f(v,1)+'</td>';
+  if(k==='dtsb')return '<td>'+num(v)+'</td>';
+  if(k==='yld')return '<td>'+f(v,1)+'%</td>';
+  if(k==='xr')return '<td>'+na(v,function(x){return sg(x,1)+'%';})+'</td>';
+  return '<td>'+sg(v,1)+'</td>';}
+function tableHTML(level,gs,sk,sd,cls){var cs=cols(level),rows=gs.map(rowOf);
+  if(!cs.some(function(c){return c[0]===sk;})){sk='flow';sd=-1;}
+  rows.sort(function(a,b){if(sk==='name')return sd*a.name.localeCompare(b.name);var x=a[sk],y=b[sk];if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;if(sk==='flow'||sk==='usd'){x=Math.abs(x);y=Math.abs(y);}return sd*(x-y);});
+  var th=cs.map(function(c){var on=c[0]===sk;return '<th'+(on?' aria-sort="'+(sd>0?'ascending':'descending')+'"':'')+'><button data-s="'+c[0]+'"'+(c[2]?' data-tip="'+esc(c[2])+'"':'')+'>'+c[1]+(on?(sd>0?' ↑':' ↓'):'')+'</button></th>';}).join('');
+  var tb=rows.map(function(r){var g=r.g,lk='',h;
+    if(level==='bond'||level==='bucket'){var bi=BD[g.ids[0]].b;var ov=level==='bond'?ovOf(g.ids[0]):LOCK[bi];lk='<span class="q">'+QUAL[B[bi].q]+'</span>'+(ov?'<span class="q lk">'+lockWord(ov)+'</span>':'');}
+    h='<tr data-path="'+pathAttr(g.path)+'"><td>'+esc(g.name)+(level==='bucket'?' '+SECS[B[BD[g.ids[0]].b].sec]:'')+lk+'</td>';
+    for(var j=1;j<cs.length;j++)h+=cell(cs[j][0],r);return h+'</tr>';}).join('');
+  return '<div class="scroll"><table class="pos '+(cls||'')+'"><thead><tr>'+th+'</tr></thead><tbody>'+(tb||'<tr><td colspan="'+cs.length+'">Nothing matches.</td></tr>')+'</tbody></table></div>';}
+function renderPos(keep){var gs=groups(plevel),q=filter.trim().toLowerCase();
+  if(q)gs=gs.filter(function(g){var b=B[BD[g.ids[0]].b],t=g.name+' '+g.sub;if(plevel==='country'||plevel==='bucket'||plevel==='bond')t+=' '+b.country+' '+REG[b.reg]+(plevel!=='country'?' '+SECN[b.sec]+' '+QUAL[b.q]+' '+lockWord(LOCK[BD[g.ids[0]].b]):'');return t.toLowerCase().indexOf(q)>=0;});
+  var tbl=tableHTML(plevel,gs,sortKey,sortDir);
+  var foot='Shown in '+MEAS[measure].label+' ('+MEAS[measure].unit+'). Tap a column to sort, a row to drill down.';
+  if(keep&&$('postbl')){$('postbl').innerHTML=tbl;$('posfoot').textContent=foot;return;}
+  $('panel').innerHTML='<input class="search" id="q" type="search" placeholder="Filter by name, region, rating…" aria-label="Filter positions" value="'+esc(filter)+'" style="margin-bottom:10px"><div id="postbl">'+tbl+'</div><p class="foot" id="posfoot">'+foot+'</p>';
+  $('q').addEventListener('input',function(e){filter=e.target.value;renderPos(true);});}
+
+function renderPanel(){var lv=tab==='trades'||tab==='pos';
+  if(!R){$('panel').innerHTML='<p class="note">Solving the first portfolio…</p>';return;}$('unit').style.display=tab==='fr'||tab==='sel'||tab==='mac'?'none':'';$('lvl').style.display=$('lvl-lab').style.display=lv?'':'none';
+  if(lv){$('lvl').value=tab==='trades'?tlevel:plevel;$('lvl-lab').textContent=tab==='trades'?'Group by':'Level';}
+  if(tab==='trades')renderTrades();else if(tab==='sel')renderSel();else if(tab==='mac')renderMac();else if(tab==='fr')renderFrontier();else if(tab==='expo')renderExpo();else renderPos(!!$('postbl'));tidyTip();}
+function render(){refresh();CB={};BW=mapBonds(U,R.w,rule()).bw;pruneSel();renderStrip();renderSummary();renderPrices();renderPanel();if(PATH&&$('sheet').open)renderSheet(true);tidyTip();}
+
+$('lvl').innerHTML=LEVELS.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>';}).join('');
+$('lvl').addEventListener('change',function(e){if(tab==='trades'){tlevel=e.target.value;showAll=false;}else plevel=e.target.value;renderPanel();});
+function goTab(t){tab=t;Array.prototype.forEach.call($('tabs').children,function(x){x.setAttribute('aria-selected',x.dataset.t===t);});$('panel').innerHTML='';renderPanel();}
+$('tabs').addEventListener('click',function(e){var b=e.target.closest('button');if(b)goTab(b.dataset.t);});
+$('unit').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;measure=b.dataset.u;press('unit','u',measure);renderPanel();if(PATH&&$('sheet').open)renderSheet(true);});
+$('panel').addEventListener('click',function(e){var s=e.target.closest('th button');if(s){var k=s.dataset.s;if(k===sortKey)sortDir=-sortDir;else{sortKey=k;sortDir=k==='name'?1:-1;}renderPos(true);return;}
+  if(e.target.closest('#more')){showAll=true;renderTrades();return;}
+  var mc=e.target.closest('[data-mac]');if(mc){macF=+mc.dataset.mac;if(tab!=='mac'){goTab('mac');$('tabs').scrollIntoView({block:'nearest'});}else renderMac();return;}
+  var sl=e.target.closest('#slevel button');if(sl){slevel=sl.dataset.l;renderSel();return;}
+  if(e.target.closest('#redo')){redistribute();return;}
+  if(e.target.closest('#selall')){DES={};DESC={};renderSel();return;}
+  if(e.target.closest('#selclear')){clearOverrides();return;}
+  if(e.target.closest('input'))return;
+  if(e.target.closest('.i'))return;
+  var r=e.target.closest('[data-path]');if(r)openPath(JSON.parse(r.dataset.path));});
+
+/* ---------- drill-down sheet: bucket → country → type or duration → bond ---------- */
+var shSort={k:'flow',d:-1};
+function idsOf(path){var ids=allIds();path.forEach(function(nd){
+  if(nd.t==='g')ids=ids.filter(function(k){return DIM[nd.dim].of(k)===nd.id;});
+  else if(nd.t==='c')ids=ids.filter(function(k){return BD[k].c===nd.c;});
+  else if(nd.t==='s')ids=ids.filter(function(k){return DIM[nd.by].of(k)===nd.id;});
+  else ids=[nd.k];});return ids;}
+function nodeName(nd){return nd.t==='g'?DIM[nd.dim].names[nd.id]:nd.t==='c'?CTRY[nd.c][0]:nd.t==='s'?DIM[nd.by].names[nd.id]:BD[nd.k].name;}
+function openPath(p){PATH=p;renderSheet(false);}
+function stat(l,v,tip,cls){return '<div'+(tip?' data-tip="'+esc(tip)+'"':'')+'><span>'+l+'</span><b'+(cls?' class="'+cls+'"':'')+'>'+v+'</b></div>';}
+function sgMio(pct){var v=usd(pct);return Math.abs(v)<0.05?'0':(v>0?'+':'−')+mio(v);}
+function statsHTML(t){return '<div class="stats'+(t.length%4&&t.length%5===0?' c5':'')+'">'+t.join('')+'</div>';}
+function lockCtl(cur){return lockCtl0([],cur).replace('data-lock=""','data-ov="1"');}
+function lockCtl0(idx,cur){var opt=[['0','Free','Free: the optimizer may buy or sell it.'],['1','Hold','Hold: keep today\'s weight, with no buying and no selling.'],['2','Exclude','Exclude: sell the whole position and do not buy it back.']];
+  return '<div class="octl"><span class="lbl" data-tip="An override takes this position out of the optimizer\'s hands. Free leaves it to the optimizer, Hold keeps today\'s weight, Exclude sells it all. A limit that an override makes impossible is relaxed and flagged.">Override</span><div class="seg" data-lock="'+idx.join(',')+'" role="group" aria-label="Override">'+opt.map(function(o){return '<button data-v="'+o[0]+'" aria-pressed="'+(String(cur)===o[0])+'" data-tip="'+esc(o[2])+'">'+o[1]+'</button>';}).join('')+'</div>'+(cur==='mixed'?'<span class="lbl">mixed</span>':'')+'</div>';}
+function measSeg(){return '<div class="seg" data-meas role="group" aria-label="Measure">'+[['mv','MV %'],['dts','DTS'],['ratio','DTS ratio'],['ct','CTDTS']].map(function(x){return '<button data-u="'+x[0]+'" aria-pressed="'+(measure===x[0])+'" data-tip="'+esc(MEAS[x[0]].tip)+'">'+x[1]+'</button>';}).join('')+'</div>';}
+/* all four measures for a set of bonds */
+function measTable(s){var h='<div class="scroll"><table class="mt"><thead><tr><th>Measure</th><th>Index</th><th>Now</th><th>New</th><th>Change</th></tr></thead><tbody>';
+  [['mv','Market value'],['ct','CTDTS'],['dts','DTS'],['ratio','DTS ratio']].forEach(function(x){var m=x[0],L=levels(s,m),fl=flow(s,m),M=MEAS[m];
+    h+='<tr><td><span data-tip="'+esc(M.tip)+'">'+x[1]+'</span></td><td>'+na(L.idx,M.lv)+'</td><td>'+na(L.now,M.lv)+'</td><td>'+na(L.nw,M.lv)+'</td><td class="'+(fl==null?'':ud(fl))+'">'+(fl==null||Math.abs(fl)<1e-9?'–':M.ac(fl))+'</td></tr>';});
+  return h+'</tbody></table></div>';}
+/* scenarios of a bucket (scaled to one bond when m and mu are given), then the outcomes the bull and bear limits use */
+function scenList(bi,m,mu,own){var b=B[bi],all=P.caseMode==='all',sc=function(r){return mu+(r-b.mu)*m;};
+  var L=(own||b.scen).map(function(x){return {name:x.name,p:x.p,r:own?x.r:sc(x.r),tip:'An analyst scenario and its probability. The expected return is the probability-weighted average of these.'};});
+  var useUp=all||!b.hasUp,useDn=all||!b.hasDn,tg=SH.tg[bi],wd=SH.wd[bi];L.push({sep:'Outcomes for the bull and bear limits'});
+  if(b.hasUp)L.push({name:'Best 25%',r:sc(b.bullS),tag:useUp?'':'bull',tip:'Probability-weighted average of the best 25% of the scenario outcomes.'+(useUp?'':' The bull-case and single-name limits use this.')});
+  if(b.hasDn)L.push({name:'Worst 25%',r:sc(b.bearS),tag:useDn?'':'bear',tip:'Probability-weighted average of the worst 25% of the scenario outcomes.'+(useDn?'':' The bear-case and single-name limits use this.')});
+  L.push({name:shW(false),r:sc(b.base+tg*b.dts),tag:useUp?'bull':'',tip:'Base scenario with the spread '+f(tg*100,0)+'% tighter, sized from '+srcW()+' (volatility '+f(SH.vol[bi]*100,0)+'% a year).'+(useUp?' The bull-case and single-name limits use this.':'')});
+  L.push({name:shW(true),r:sc(b.base-wd*b.dts),tag:useDn?'bear':'',tip:'Base scenario with the spread '+f(wd*100,0)+'% wider, sized from '+srcW()+' (volatility '+f(SH.vol[bi]*100,0)+'% a year).'+(useDn?' The bear-case and single-name limits use this.':'')});
+  return L;}
+function scenRows(list){var mx=0;list.forEach(function(s){if(!s.sep)mx=Math.max(mx,Math.abs(s.r));});mx=mx*1.05||1;
+  return list.map(function(s){if(s.sep)return '<div class="scn-sep">'+s.sep+'</div>';return '<div class="scn"'+(s.tip?' data-tip="'+esc(s.tip)+'"':'')+'><span>'+s.name+'</span><span class="p">'+(s.tag?'<em>'+s.tag+'</em>':s.p==null?'':f(s.p*100,0)+'%')+'</span>'+barHTML(s.r,mx)+'<span class="r">'+sg(s.r,1)+'%</span></div>';}).join('');}
+function caseNote(bi){var b=B[bi];
+  if(P.caseMode==='all')return 'The rows tagged bull and bear feed the limits: a '+shLbl()+' spread move, sized from '+srcW()+', is set for every bond.';
+  return 'The rows tagged bull and bear feed the limits. '+(b.hasUp?'Bull is the best 25% of outcomes.':'There is no upside scenario, so bull is a '+shW(false)+'.')+' '+(b.hasDn?'Bear is the worst 25%.':'There is no downside scenario, so bear is a '+shW(true)+'.')+' Moves are sized from '+srcW()+'.';}
+function childRows(gs){var M=MEAS[measure],rows=gs.map(function(g){var L=levels(g.s,measure),lp=g.path[g.path.length-1],bd=lp.t==='c'&&g.ids.length===CIDS[lp.c].length?cband(lp.c):null;return {g:g,c:dif(L.now,L.idx),p:dif(L.nw,L.idx),L:L,lim:bd?bandIn(measure,bd):null};});
+  rows.sort(function(a,b){return Math.abs(b.g.s.tr)-Math.abs(a.g.s.tr)||Math.abs(b.p||0)-Math.abs(a.p||0);});
+  var max=0;rows.forEach(function(r){max=Math.max(max,Math.abs(r.c||0),Math.abs(r.p||0));});max=max*1.12||1;
+  return axisHTML(max,'Under','Over',axFmt(measure))+rows.map(function(r){var s=r.g.s,val=M.act?na(r.p,M.ac):na(r.L.nw,M.lv);
+    return '<button class="trow" data-push="'+pathAttr(r.g.path[r.g.path.length-1])+'" data-tip="'+esc(rowTip(r.g))+'"><span class="nm"><b>'+esc(r.g.name)+(r.g.sub?'<span class="q">'+r.g.sub+'</span>':'')+'</b><small><span>'+(s.nTr&&!s.sw?'trade ':'')+tradeTxt(s)+'</span> <span>now '+(M.act?na(r.c,M.ac):na(r.L.now,M.lv))+'</span></small></span>'+barHTML(r.p,max,r.c,r.lim)+'<span class="val">'+val+'</span></button>';}).join('');}
+function renderSheet(keep){var path=PATH,last=path[path.length-1],ids=idsOf(path),s=seg(ids),h='',i;
+  h+='<div class="crumbs"><span>Portfolio</span>';for(i=0;i<path.length;i++)h+='<span>›</span>'+(i<path.length-1?'<button data-crumb="'+i+'">'+esc(nodeName(path[i]))+'</button>':'<span>'+esc(nodeName(path[i]))+'</span>');h+='</div>';
+  if(last.t==='b'){h+=bondSheet(last.k);openSheet(h,keep);return;}
+  var bset={},cset={};ids.forEach(function(k){bset[BD[k].b]=1;cset[BD[k].c]=1;});var bl=Object.keys(bset).map(Number),nCty=Object.keys(cset).length,full=0;bl.forEach(function(b){full+=U.bondsOf[b].length;});
+  var whole=full===ids.length,oneC=nCty===1,c=oneC&&ids.length?BD[ids[0]].c:-1,isCountry=oneC&&whole&&bl.length===bucketsOf(c).length,one=oneC&&whole&&bl.length===1;
+  var has={};path.forEach(function(nd){if(nd.t==='g')has[nd.dim]=1;if(nd.t==='s')has[nd.by]=1;if(nd.t==='c')has.c=1;});
+  var parts=[];path.forEach(function(nd){if(nd.t==='c')parts.unshift(nodeName(nd));else if(!(nd.t==='g'&&has.c&&(nd.dim==='reg'||isCountry)))parts.push(nodeName(nd));});
+  var title=parts.map(esc).join(' · '),sub=[];
+  if(one)title+='<span class="q">'+QUAL[B[bl[0]].q]+'</span>';
+  if(oneC)sub.push(REG[CTRY[c][2]]);if(isCountry)sub.push('rated '+QUAL[CTRY[c][3]]);
+  sub.push(ids.length+' bond'+(ids.length===1?'':'s'));if(!oneC)sub.push(nCty+' countries');
+  h+='<div class="hd"><div><h3 id="sh-title">'+title+'</h3><div class="foot" style="margin:2px 0 0">'+sub.join(' · ')+'</div></div><button class="x" data-close aria-label="Close">✕</button></div>';
+  h+=lockCtl(ovState(ids));
+  var tiles=[stat('Active now',sg(s.W0-s.Wi)+'%','Today\'s market value weight minus the index\'s.'),stat('Active new',sg(s.W1-s.Wi)+'%','Proposed market value weight minus the index\'s.'),
+     stat('Net trade, % of NAV',s.nTr?sg(s.tr)+'%':'none','Buys minus sells as % of NAV.',s.sw?'':ud(s.tr)),stat('Net trade, $ mio',s.nTr?sgMio(s.tr):'none','Buys minus sells in millions of dollars.'+(s.nTr?' Buys $'+mio(usd(s.buy))+' mio, sells $'+mio(usd(s.sell))+' mio.':''),s.sw?'':ud(s.tr)),
+     stat('Net trade, CTDTS',s.nTr?sg(s.trC,1):'none','Change in contribution to DTS: each trade\'s % of NAV × the bond\'s DTS.',ud(s.trC)),stat('Alpha contrib.',sg(s.ac,1)+' bp','Proposed active weight × expected return against the index, summed over the bonds.'),
+     stat('Exp. ret vs index',na(s.xr,function(v){return sg(v,1)+'%';}),'Index-weighted expected return of these bonds minus the index\'s expected return.'),stat('Bond trades',s.nTr+' of '+s.n,'Bonds traded, out of the bonds here.'+(s.nTr?' Buys $'+mio(usd(s.buy))+' mio, sells $'+mio(usd(s.sell))+' mio.':''))];
+  if(isCountry)tiles.push(stat('If it rallies',sg(M0.cb[c],0)+' → '+bp0(R.m.cb[c]),'Alpha gained or lost if this country alone lands in its bull case: today\'s portfolio → proposed.'),stat('If it sells off',sg(M0.ce[c],0)+' → '+bp0(R.m.ce[c]),'Alpha gained or lost if this country alone lands in its bear case: today\'s portfolio → proposed.'));
+  h+=statsHTML(tiles);
+  if(isCountry){var notes=[];R.rep.forEach(function(x){if(x.name!==CTRY[c][0])return;
+      if(x.kind==='Country'){if(x.st==='max'||x.st==='min')notes.push('At its active limit of ±'+P.country+'%'+(P.basis==='ct'?' of index DTS':'')+'.');else if(x.st==='forced')notes.push('Outside its active limit because of your override.');}
+      else if(x.kind==='Name'){if(x.st==='min')notes.push('At the single-name limit of '+P.name+' bp in its '+(x.up?'rally':'sell-off')+' case.');else if(x.st==='forced')notes.push('Beyond the single-name limit in its '+(x.up?'rally':'sell-off')+' case because of your override.');}});
+    if(R.sold&&R.sold.indexOf(c)>=0)notes.push('Sold whole: the position would have ended below the small-position threshold.');
+    if(R.min.neutral.indexOf(c)>=0)notes.push('Traded as a switch: its net trade would have been below the minimum size, so buys and sells offset.');
+    if(notes.length)h+='<p class="foot" style="margin-top:0">'+notes.join(' ')+'</p>';}
+  if(isCountry)h+=limitCard(cband(c));
+  h+='<div class="h4row"><h4>Position in every measure</h4></div>'+measTable(s);
+  if(one){var b=B[bl[0]];
+    h+='<div class="h4row"><h4>Return scenarios, 12 months'+info('The analyst\'s scenarios for this bucket with their probabilities; the expected return is their probability-weighted average. Below them are the outcomes the bull-case, bear-case and single-name limits can use; the ones in use are tagged.','About scenarios')+'</h4></div>'+scenRows(scenList(bl[0],1,b.mu))+
+       '<p class="foot">Expected '+f(b.mu,1)+'% ('+sg(b.mu-muB,1)+'% vs index). '+caseNote(bl[0])+' Spread volatility '+f(b.vol*100,0)+'% a year. Trading cost '+f(P.cost*b.tc,0)+' bp.</p>';}
+  if(!has.c){h+='<div class="h4row"><h4>Countries</h4>'+measSeg()+'</div>'+childRows(groups('country',ids))+'<p class="foot">Tap a country to go deeper. Each bar is the proposed position against the index and the ring is today\'s, in '+MEAS[measure].label+'.</p>';}
+  else{var opts=[['bond','Bonds','List every bond here with its trade.']];
+    if(last.t!=='s'){if(!has.sec&&bl.length>1)opts.push(['sec','By type','Split this into sovereign, quasi-sovereign and corporate bonds.']);if(!has.dur)opts.push(['dur','By duration','Split this into duration buckets.']);}
+    var view=opts.some(function(o){return o[0]===cview;})?cview:'bond';
+    h+='<div class="h4row"><h4>'+(view==='bond'?'Bonds and trades':view==='sec'?'By type':'By duration')+'</h4><div class="row">'+(opts.length<2?'':'<div class="seg" data-cview role="group" aria-label="Break down by">'+opts.map(function(o){return '<button data-v="'+o[0]+'" aria-pressed="'+(o[0]===view)+'" data-tip="'+esc(o[2])+'">'+o[1]+'</button>';}).join('')+'</div>')+measSeg()+'</div></div>';
+    if(view==='bond')h+=tableHTML('bond',groups('bond',ids),shSort.k,shSort.d,'push')+'<p class="foot">Shown in '+MEAS[measure].label+'. Tap a bond for all its statistics and scenarios.'+(U.real?'':' In a bond\'s name, Q marks a quasi-sovereign issuer and C a corporate issuer.')+'</p>';
+    else h+=childRows(groups(view,ids).map(function(g){g.path=[{t:'s',by:view,id:g.path[0].id}];return g;}))+'<p class="foot">Tap a row to see its bonds. Each bar is the proposed position against the index and the ring is today\'s, in '+MEAS[measure].label+'.</p>';}
+  openSheet(h,keep);}
+/* everything about one bond */
+function bondSheet(k){var d=BD[k],bi=d.b,b=B[bi],s=seg([k]),t=bondTrade(k),sc=function(r){return d.mu+(r-b.mu)*d.m;},bull=sc(CTX.bull[bi]),bear=sc(CTX.bear[bi]),a0=d.w0-d.wb,a1=BW[k]-d.wb,c=P.cost*b.tc,h='';
+  h+='<div class="hd"><div><h3 id="sh-title">'+esc(d.name)+'<span class="q">'+QUAL[b.q]+'</span>'+(ovOf(k)?'<span class="q lk">'+lockWord(ovOf(k))+'</span>':'')+'</h3><div class="foot" style="margin:2px 0 0">'+esc(b.country)+' · '+SECN[b.sec]+' · '+REG[b.reg]+(d.mat!==''?' · matures '+d.mat:'')+(d.cpn!==''?' · coupon '+d.cpn+'%':'')+'</div></div><button class="x" data-close aria-label="Close">✕</button></div>';
+  h+=lockCtl(ovState([k]));
+  h+='<div class="h4row"><h4>Proposed trade and position</h4></div>'+statsHTML([
+    stat('Trade, % of NAV',t===0?'none':sg(t)+'%','Proposed trade as % of NAV.',ud(t)),stat('Trade, $ mio',t===0?'none':sgMio(t),'Proposed trade in millions of dollars, at a portfolio size of $'+f(P.nav/1000,P.nav%1000?2:0)+' bn.',ud(t)),
+    stat('Trade, CTDTS',t===0?'none':sg(t*d.dts,1),'The trade\'s contribution to DTS: % of NAV × DTS.',ud(t)),stat('Trading cost',f(c,0)+' bp'+(t!==0?' · $'+mio(Math.abs(usd(t))*c/1e4)+' mio':''),'Bid-ask cost for this bond, and the dollar cost of the proposed trade.'),
+    stat('Active now',sg(a0)+'%','Today\'s weight minus the index weight.'),stat('Active new',sg(a1)+'%','Proposed weight minus the index weight.'),
+    stat('Active CTDTS now',sg(a0*d.dts,1),'Today\'s CTDTS minus the index\'s.'),stat('Active CTDTS new',sg(a1*d.dts,1),'Proposed CTDTS minus the index\'s.')]);
+  h+=limitCard(bondBand(k));
+  h+='<div class="h4row"><h4>Analytics</h4></div>'+statsHTML([
+    stat('Price',f(d.price,1)),stat('Yield',f(d.yld,2)+'%'),stat('Spread',f(d.spread,0)+' bp'),stat('Spread volatility',f(b.vol*100,0)+'%','Standard deviation of the relative spread change over a year, from the risk model.'),
+    stat('Duration',f(d.dur,1),'Modified duration in years.'),stat('Spread duration',f(d.sd,1),'Sensitivity of the price to the spread, in years.'),stat('DTS',num(d.dts*100),'Spread duration × spread in bp.'),stat('Duration bucket',DURB[d.db],'The duration bucket this bond falls in.')]);
+  h+='<div class="h4row"><h4>Expected return, 12 months</h4></div>'+statsHTML([
+    stat('Expected return',f(d.mu,1)+'%','Probability-weighted average of the scenario returns.'),stat('vs index',sg(d.mu-muB,1)+'%','Expected return minus the index\'s ('+f(muB,1)+'%).'),stat('vs cash',sg(d.mu-P.sofr,1)+'%','Expected return minus SOFR ('+P.sofr+'%).'),stat('Alpha contrib.',sg(a1*(d.mu-muB),1)+' bp','Proposed active weight × expected return against the index.'),
+    stat('Bull case',sg(bull,1)+'%','Return in the bull case the limits use.'),stat('Bull vs index',sg(bull-CTX.benchBull,1)+'%','Bull-case return minus the index\'s bull-case return ('+sg(CTX.benchBull,1)+'%).'),stat('Bear case',sg(bear,1)+'%','Return in the bear case the limits use.'),stat('Bear vs index',sg(bear-CTX.benchBear,1)+'%','Bear-case return minus the index\'s bear-case return ('+sg(CTX.benchBear,1)+'%).')]);
+  h+='<div class="h4row"><h4>Return scenarios'+info('The scenarios of this bond\'s bucket applied to the bond: each scenario\'s spread move is scaled by the bond\'s DTS relative to its bucket. Below them are the outcomes the bull-case, bear-case and single-name limits can use; the ones in use are tagged.','About scenarios')+'</h4></div>'+scenRows(scenList(bi,d.m,d.mu,d.scen))+'<p class="foot">'+caseNote(bi)+'</p>';
+  h+='<div class="h4row"><h4>Position in every measure</h4></div>'+measTable(s);
+  h+='<p class="foot">The optimizer sets the weight of this bond\'s bucket ('+esc(b.country)+' '+SECN[b.sec].toLowerCase()+'). Buys then go to the bucket\'s bonds with the highest expected return, up to +1% active each, and sells come from the lowest first'+(minOn()?'. No trade below '+P.minCT+' CTDTS or $'+P.minUSD+' mio is opened':'')+'.</p>';
+  return h;}
+/* which control of the sheet has the keyboard focus, so a re-draw can hand it back */
+function focusKey(el){if(!el||!$('sh').contains(el))return null;var d=el.dataset,q=(el.parentNode&&el.parentNode.dataset)||{};
+  if(d.v!=null&&'ov' in q)return '[data-ov] [data-v="'+d.v+'"]';
+  if(d.v!=null&&'lock' in q)return '[data-lock] [data-v="'+d.v+'"]';
+  if(d.v!=null&&'cview' in q)return '[data-cview] [data-v="'+d.v+'"]';
+  if(d.u!=null&&'meas' in q)return '[data-meas] [data-u="'+d.u+'"]';
+  if(d.s!=null)return 'th button[data-s="'+d.s+'"]';
+  return null;}
+function openSheet(html,keep){var d=$('sheet'),top=d.scrollTop,fk=keep?focusKey(document.activeElement):null,e;if(keep)tipQuiet=Date.now()+300;$('sh').innerHTML=html;
+  if(!d.open){if(d.showModal)d.showModal();else d.setAttribute('open','');}d.scrollTop=keep?top:0;
+  if(fk&&(e=$('sh').querySelector(fk)))e.focus({preventScroll:true});tidyTip();}
+function closeSheet(){var d=$('sheet');PATH=null;hideTip();if(d.close)d.close();else d.removeAttribute('open');}
+$('sheet').addEventListener('close',function(){PATH=null;hideTip();});
+$('sheet').addEventListener('click',function(e){if(e.target===$('sheet')||e.target.closest('[data-close]')){closeSheet();return;}
+  if(e.target.closest('.i'))return;
+  var cr=e.target.closest('[data-crumb]');if(cr){openPath(PATH.slice(0,+cr.dataset.crumb+1));return;}
+  var cv=e.target.closest('[data-cview] button');if(cv){cview=cv.dataset.v;renderSheet(true);return;}
+  var ms=e.target.closest('[data-meas] button');if(ms){measure=ms.dataset.u;press('unit','u',measure);renderPanel();renderSheet(true);return;}
+  var ob=e.target.closest('[data-ov] button');
+  if(ob){Array.prototype.forEach.call(ob.parentNode.children,function(x){x.setAttribute('aria-pressed',x===ob);});setOv(idsOf(PATH),+ob.dataset.v);return;}
+  var lk=e.target.closest('[data-lock] button');
+  if(lk){var idx=lk.parentNode.dataset.lock.split(',').map(Number),v=+lk.dataset.v;Array.prototype.forEach.call(lk.parentNode.children,function(x){x.setAttribute('aria-pressed',x===lk);});setLock(idx,v);return;}
+  var sb=e.target.closest('th button');if(sb){var sk=sb.dataset.s;if(sk===shSort.k)shSort.d=-shSort.d;else shSort={k:sk,d:sk==='name'?1:-1};renderSheet(true);return;}
+  var pu=e.target.closest('[data-push]');if(pu){openPath(PATH.concat([JSON.parse(pu.dataset.push)]));return;}
+  var tr=e.target.closest('tr[data-path]');if(tr){var p=JSON.parse(tr.dataset.path);openPath(PATH.concat([p[p.length-1]]));}});
+
+/* start: draw the page at once, then let the solver fill it in */
+if(U.real){$('badge').textContent=(U.meta.name||'Loaded data')+(U.meta.asOf?', as of '+U.meta.asOf:'');$('mocknote').textContent='';try{$('datamock').hidden=!sessionStorage.getItem(DKEY);}catch(e){}}
+if(DERR)$('dataerr').innerHTML='<div class="alert" role="alert">The data file could not be used, so the mock universe is shown. '+esc(DERR)+'</div>';
+$('datafile').addEventListener('change',function(e){var fl=e.target.files&&e.target.files[0];if(!fl)return;var rd=new FileReader();
+  rd.onload=function(){var keep=[CTRY,REG,MACM,MACN],txt=String(rd.result),msg='';
+    try{universeFromData(JSON.parse(txt));}catch(er){msg=er.message||'The file is not valid JSON.';}
+    CTRY=keep[0];REG=keep[1];MACM=keep[2];MACN=keep[3];
+    if(!msg){try{sessionStorage.setItem(DKEY,txt);location.reload();return;}catch(er2){msg='This browser cannot keep the file for the page. Build the page with the data instead: python build.py --data yourfile.json';}}
+    $('dataerr').innerHTML='<div class="alert" role="alert">'+esc(msg)+'</div>';};
+  rd.readAsText(fl);});
+$('datamock').addEventListener('click',function(){try{sessionStorage.removeItem(DKEY);}catch(e){}location.reload();});
+syncControls();renderOverrides();
+$('kpis').innerHTML=['Exp. alpha','Track. error','Beta','Turnover'].map(function(l){return '<div class="kpi"><div class="l">'+l+'</div><div class="v">–</div><div class="d">&nbsp;</div></div>';}).join('');
+$('sum').innerHTML='<tbody><tr><td>Solving the first portfolio…</td></tr></tbody>';
+renderPanel();
+run();
+})();
+</script>
+</body>
+</html>

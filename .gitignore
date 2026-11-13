@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+# real data stays out of the repository
+data/private/
+data/*.private.json
+dist/*.private.html
